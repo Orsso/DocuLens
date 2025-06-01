@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuLens - Extracteur d'Images PDF</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-blue: #1e3a8a;
+            --dark-blue: #1e293b;
+            --glass-bg: rgba(30, 58, 138, 0.1);
+            --glass-border: rgba(59, 130, 246, 0.2);
+            --glass-shadow: rgba(0, 0, 0, 0.3);
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --accent-blue: #3b82f6;
+            --success-green: #10b981;
+            --warning-orange: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+            background-attachment: fixed;
+            background-size: 100% 100%;
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            overflow-x: hidden;
+            overscroll-behavior: none;
+        }
+        
+        html {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+            background-attachment: fixed;
+            overscroll-behavior: none;
+        }
+
+        /* Glassmorphism Effects */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px var(--glass-shadow);
+        }
+
+        .glass-card {
+            background: rgba(30, 58, 138, 0.15);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 64px rgba(0, 0, 0, 0.4);
+            border-color: rgba(59, 130, 246, 0.5);
+        }
+
+        /* Header */
+        .hero-section {
+            text-align: center;
+            padding: 4rem 0;
+            margin-bottom: 3rem;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6, #1d4ed8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+        }
+
+        .hero-subtitle {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.5;
+        }
+
+        .hero-features {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 2rem;
+        }
+
+        .feature-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 25px;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        /* Upload Section */
+        .upload-section {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .upload-container {
+            position: relative;
+        }
+
+        .file-drop-zone {
+            border: 3px dashed rgba(59, 130, 246, 0.4);
+            border-radius: 20px;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .file-drop-zone:hover,
+        .file-drop-zone.dragover {
+            border-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.1);
+            transform: scale(1.02);
+        }
+
+        .file-drop-zone.dragover {
+            border-style: solid;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            color: var(--accent-blue);
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .file-drop-zone:hover .upload-icon {
+            transform: scale(1.1);
+        }
+
+        .upload-text {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-hint {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        /* Configuration */
+        .config-section {
+            margin-top: 2rem;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .config-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .config-label {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-control {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: var(--text-primary) !important;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-primary) !important;
+        }
+
+        .form-control::placeholder {
+            color: rgba(203, 213, 225, 0.5) !important;
+        }
+
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-check-input {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 2px solid rgba(59, 130, 246, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .form-check-input:checked {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .form-check-label {
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        /* Submit Button */
+        .submit-section {
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .btn-glass {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(29, 78, 216, 0.9));
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            border-radius: 12px;
+            padding: 1rem 3rem;
+            color: white;
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            min-width: 200px;
+            justify-content: center;
+        }
+
+        .btn-glass:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 48px rgba(59, 130, 246, 0.4);
+            text-decoration: none;
+            color: white;
+        }
+
+        .btn-glass:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Features Section */
+        .features-section {
+            margin-top: 4rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .feature-card {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            color: var(--accent-blue);
+            margin-bottom: 1rem;
+        }
+
+        .feature-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .feature-description {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Progress */
+        .progress-section {
+            display: none;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(15, 23, 42, 0.5);
+            margin: 1rem 0;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--accent-blue), #1d4ed8);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        /* File Info */
+        .file-info {
+            display: none;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: var(--success-green);
+            margin-bottom: 0.5rem;
+        }
+
+        .file-size {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-features {
+                gap: 1rem;
+            }
+            
+            .config-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .file-drop-zone {
+                padding: 2rem 1rem;
+            }
+            
+            .upload-icon {
+                font-size: 3rem;
+            }
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .processing {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .glass-card {
+            animation: fadeInUp 0.6s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid px-4">
+        <!-- Hero Section -->
+        <div class="hero-section">
+            <h1 class="hero-title">
+                <i class="fas fa-magic me-3"></i>DocuLens
+            </h1>
+            <p class="hero-subtitle">
+                Extracteur d'images PDF intelligent avec détection automatique de sections 
+                et éditeur manuel pour un contrôle total
+            </p>
+            
+            <div class="hero-features">
+                <div class="feature-badge">
+                    <i class="fas fa-robot"></i>
+                    Détection intelligente
+                </div>
+                <div class="feature-badge">
+                    <i class="fas fa-edit"></i>
+                    Édition Manuelle
+                </div>
+                <div class="feature-badge">
+                    <i class="fas fa-filter"></i>
+                    Filtrage Doublons
+                </div>
+                <div class="feature-badge">
+                    <i class="fas fa-tags"></i>
+                    Nomenclature CLR
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Upload Section -->
+        <div class="upload-section">
+            <div class="glass-card">
+                <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <!-- File Upload -->
+                    <div class="upload-container">
+                        <div class="file-drop-zone" id="dropZone">
+                            <input type="file" name="file" accept=".pdf" class="file-input" id="fileInput" required>
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <div class="upload-text">Glissez votre PDF ici</div>
+                            <div class="upload-hint">ou cliquez pour sélectionner un fichier</div>
+                        </div>
+                        
+                        <div class="file-info" id="fileInfo">
+                            <div class="file-name" id="fileName"></div>
+                            <div class="file-size" id="fileSize"></div>
+                        </div>
+                    </div>
+
+                    <!-- Configuration -->
+                    <div class="config-section">
+                        <div class="config-grid">
+                            <div class="config-card">
+                                <label class="config-label">
+                                    <i class="fas fa-tag"></i>
+                                    Nom du Document
+                                </label>
+                                <input type="text" name="document_name" class="form-control" 
+                                       placeholder="BEO001" 
+                                       title="Nom qui apparaîtra dans la nomenclature des fichiers">
+                            </div>
+                            
+                            <div class="config-card">
+                                <label class="config-label">
+                                    <i class="fas fa-cog"></i>
+                                    Options d'Extraction
+                                </label>
+                                
+                                <div class="form-check">
+                                    <input type="checkbox" name="filter_duplicates" class="form-check-input" 
+                                           id="filterDuplicates" checked>
+                                    <label class="form-check-label" for="filterDuplicates">
+                                        Filtrer les images dupliquées
+                                    </label>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input type="checkbox" name="detect_hierarchy" class="form-check-input" 
+                                           id="detectHierarchy" checked>
+                                    <label class="form-check-label" for="detectHierarchy">
+                                        Détection automatique des sections
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="submit-section">
+                        <button type="submit" class="btn-glass" id="submitBtn">
+                            <i class="fas fa-magic"></i>
+                            <span id="submitText">Extraire les Images</span>
+                        </button>
+                        
+                        <div class="progress-section" id="progressSection">
+                            <div class="text-white mb-2">Traitement en cours...</div>
+                            <div class="progress">
+                                <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="features-section">
+            <div class="features-grid">
+                <div class="feature-card glass-card">
+                    <i class="fas fa-brain feature-icon"></i>
+                    <h3 class="feature-title">Détection Intelligente</h3>
+                    <p class="feature-description">
+                        Algorithme avancé pour détecter automatiquement les sections et sous-sections 
+                        de vos documents PDF avec précision.
+                    </p>
+                </div>
+                
+                <div class="feature-card glass-card">
+                    <i class="fas fa-palette feature-icon"></i>
+                    <h3 class="feature-title">Éditeur Visuel</h3>
+                    <p class="feature-description">
+                        Interface moderne avec drag & drop pour réorganiser manuellement vos images 
+                        et créer des sections personnalisées.
+                    </p>
+                </div>
+                
+                <div class="feature-card glass-card">
+                    <i class="fas fa-file-archive feature-icon"></i>
+                    <h3 class="feature-title">Export Professionnel</h3>
+                    <p class="feature-description">
+                        Nomenclature CLR standardisée avec export ZIP organisé pour une 
+                        intégration parfaite dans vos workflows.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Gestion du drag & drop
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const uploadForm = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitText = document.getElementById('submitText');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+
+        // Drag & Drop Events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                fileInput.files = files;
+                showFileInfo(files[0]);
+            }
+        }
+
+        // File input change
+        fileInput.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                showFileInfo(e.target.files[0]);
+            }
+        });
+
+        function showFileInfo(file) {
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            fileInfo.style.display = 'block';
+            
+            // Auto-fill document name if empty
+            const docNameInput = document.querySelector('input[name="document_name"]');
+            if (!docNameInput.value) {
+                const baseName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+                docNameInput.value = baseName;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Form submission with progress
+        uploadForm.addEventListener('submit', function(e) {
+            if (!fileInput.files.length) {
+                e.preventDefault();
+                alert('Veuillez sélectionner un fichier PDF');
+                return;
+            }
+
+            // Show progress
+            submitBtn.disabled = true;
+            submitText.textContent = 'Traitement...';
+            submitBtn.classList.add('processing');
+            progressSection.style.display = 'block';
+            
+            // Simulate progress (since we can't track real upload progress with form submission)
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+            }, 200);
+            
+            // Clean up will happen on page redirect
+            setTimeout(() => clearInterval(interval), 10000);
+        });
+
+        // Auto-generate document name based on filename
+        fileInput.addEventListener('change', function() {
+            const docNameInput = document.querySelector('input[name="document_name"]');
+            if (this.files[0] && !docNameInput.value) {
+                const fileName = this.files[0].name;
+                const baseName = fileName.replace(/\.[^/.]+$/, '');
+                // Clean the name for URL safety
+                const cleanName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+                docNameInput.value = cleanName;
+            }
+        });
+    </script>
+</body>
+</html> 
