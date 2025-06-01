@@ -16,6 +16,16 @@ python app.py
 
 Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 
+## 🌐 Deploy for Free
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Orsso/DocuLens)
+
+1. Click the button above or go to [render.com](https://render.com)
+2. Connect your GitHub account  
+3. Select this repository
+4. Deploy automatically (takes ~2 min)
+5. Get your live URL: `https://yourapp.onrender.com`
+
 ## ✨ What it does
 
 - **🔍 Smart extraction**: Finds images and sections automatically
