@@ -1,0 +1,305 @@
+:root {
+    --primary-blue: #1e3a8a;
+    --dark-blue: #1e293b;
+    --glass-bg: rgba(30, 58, 138, 0.1);
+    --glass-border: rgba(59, 130, 246, 0.2);
+    --glass-shadow: rgba(0, 0, 0, 0.3);
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --accent-blue: #3b82f6;
+    --success-green: #10b981;
+    --warning-orange: #f59e0b;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--text-primary);
+    overflow-x: hidden;
+    overscroll-behavior: none;
+}
+
+html {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #1e3a8a 100%);
+    background-attachment: fixed;
+    overscroll-behavior: none;
+}
+
+.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px var(--glass-shadow);
+}
+
+.glass-card {
+    background: rgba(30, 58, 138, 0.15);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+.config-panel {
+    position: sticky;
+    top: 20px;
+    z-index: 100;
+}
+
+.config-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-control {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary) !important;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: rgba(15, 23, 42, 0.8);
+    color: var(--text-primary) !important;
+}
+
+.form-control::placeholder {
+    color: rgba(203, 213, 225, 0.5) !important;
+}
+
+.form-control:disabled {
+    background: rgba(15, 23, 42, 0.3) !important;
+    border-color: rgba(59, 130, 246, 0.1) !important;
+    color: var(--text-secondary) !important;
+    cursor: not-allowed !important;
+}
+
+.form-control option {
+    background: var(--dark-blue);
+    color: var(--text-primary);
+}
+
+.btn-glass {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.8), rgba(29, 78, 216, 0.8));
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    color: white;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-glass:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+    text-decoration: none;
+    color: white;
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-add {
+    background: linear-gradient(135deg, var(--success-green), #059669);
+    color: white;
+}
+
+.btn-add-sub {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    color: white;
+}
+
+.btn-section-delete {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+}
+
+.btn-icon:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.stats-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 100;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    text-align: center;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-blue);
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    color: var(--accent-blue);
+    margin-bottom: 1rem;
+}
+
+.empty-state h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.tips-box {
+    margin-top: 1.5rem;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(30, 58, 138, 0.1);
+}
+
+.tips-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tips-header:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.tips-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+}
+
+.tips-title span {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.tips-chevron {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    transition: transform 0.3s ease;
+}
+
+.tips-chevron.rotated {
+    transform: rotate(180deg);
+}
+
+.tips-content {
+    padding: 0.75rem 1rem;
+    max-height: 500px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.tips-content.collapsed {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.tip-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.tip-item:last-child {
+    margin-bottom: 0;
+}
+
+.tip-item i {
+    color: var(--accent-blue);
+    font-size: 0.9rem;
+    margin-top: 0.1rem;
+    min-width: 1rem;
+}
+
+.tip-item span {
+    color: var(--text-secondary);
+} 
