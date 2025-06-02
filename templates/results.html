@@ -911,7 +911,7 @@
              });
          }
 
-                function deleteSection(sectionId) {
+        function deleteSection(sectionId) {
             const sectionIndex = appState.sections.findIndex(s => s.id === sectionId);
             if (sectionIndex !== -1) {
                 const sectionToDelete = appState.sections[sectionIndex];
@@ -923,7 +923,7 @@
                 
                     // Collecter toutes les images à animer vers unassigned
                     const imagesToAnimate = [];
-                    sectionsToDelete.forEach(section => {
+                sectionsToDelete.forEach(section => {
                         imagesToAnimate.push(...section.images.map(img => img.filename));
                         console.log(`📤 Images de la section ${section.sectionNumber || section.number} préparées pour animation vers non-assignées (${section.images.length} images)`);
                     });
@@ -934,12 +934,12 @@
                         
                         // Supprimer les sections après un délai pour que l'animation démarre
                         setTimeout(() => {
-                            sectionsToDelete.forEach(section => {
-                                const index = appState.sections.findIndex(s => s.id === section.id);
-                                if (index !== -1) {
-                                    appState.sections.splice(index, 1);
-                                }
-                            });
+                sectionsToDelete.forEach(section => {
+                    const index = appState.sections.findIndex(s => s.id === section.id);
+                    if (index !== -1) {
+                        appState.sections.splice(index, 1);
+                    }
+                });
                         }, 200);
                     } else {
                         // Pas d'images, suppression directe
@@ -967,15 +967,23 @@
                     }
                     
                     if (parentSection && sectionToDelete.images.length > 0) {
+                        // D'abord transférer les images vers la section parente dans les données
+                        parentSection.images.push(...sectionToDelete.images);
+                        
                         // Animer les images vers la section parente
                         const imagesToAnimate = sectionToDelete.images.map(img => img.filename);
                         console.log(`⬆️ Images de la sous-section ${sectionToDelete.sectionNumber || sectionToDelete.number} préparées pour animation vers section parente ${parentSection.sectionNumber || parentSection.number} (${sectionToDelete.images.length} images)`);
                         
-                        animateImagesMoveToSection(imagesToAnimate, parentSection.id);
+                        // Vider les images de la section à supprimer (elles sont maintenant dans le parent)
+                        sectionToDelete.images = [];
+                        
+                        // Déclencher l'animation mais avec un flag spécial pour éviter double déplacement
+                        animateSubsectionImagesToParent(imagesToAnimate, parentSection.id);
                         
                         // Supprimer la sous-section après un délai
                         setTimeout(() => {
                             appState.sections.splice(sectionIndex, 1);
+                            finalizeSectionDeletion();
                         }, 200);
                     } else if (sectionToDelete.images.length > 0) {
                         // Si pas de parent trouvé, animer vers unassigned
@@ -997,13 +1005,33 @@
             }
         }
         
+        function animateSubsectionImagesToParent(imagesToAnimate, parentSectionId) {
+            logInfo(`🎬 Animation spéciale sous-section vers parent pour ${imagesToAnimate.length} images`);
+            
+            // Animer les images avec un délai échelonné pour un effet cascade
+            imagesToAnimate.forEach((filename, index) => {
+                setTimeout(() => {
+                    animateImageMove(filename, parentSectionId);
+                }, index * 100); // 100ms de délai entre chaque image
+            });
+            
+            // Mettre à jour l'interface après l'animation (sans déplacer les données qui sont déjà au bon endroit)
+            const totalDelay = imagesToAnimate.length * 100 + 700; // 700ms = durée de l'animation
+            setTimeout(() => {
+                renderSections();
+                updateUnassignedImages();
+                updateStats();
+                logInfo(`✅ Animation sous-section vers parent terminée`);
+            }, totalDelay);
+        }
+        
         function finalizeSectionDeletion() {
-            // Renumbéroter les sections (automatique)
-            renumberSections(true);
-            renderSections();
+                // Renumbéroter les sections (automatique)
+                renumberSections(true);
+                renderSections();
             updateUnassignedImages();
-            updateStats();
-            updateAllFilenames();
+                updateStats();
+                updateAllFilenames();
         }
 
                 function cleanupTooltips() {
@@ -1200,9 +1228,9 @@
                     </div>
                 </div>
                 
-                                  <div class="images-grid" data-section-id="${section.id}">
-                      ${section.images.map((image, index) => renderImageCard(image, nomenclatureNumber, index + 1)).join('')}
-                  </div>
+                <div class="images-grid" data-section-id="${section.id}">
+                    ${section.images.map((image, index) => renderImageCard(image, nomenclatureNumber, index + 1)).join('')}
+                </div>
                 
                 ${level === 1 && subsections.length > 0 ? `
                     <div class="subsections-container">
@@ -2173,9 +2201,6 @@
             renderSections();
             updateUnassignedImages();
             updateStats();
-            
-            // Si c'était un déplacement suite à une suppression de section, finaliser
-            finalizeSectionDeletion();
             
             logInfo(`✅ ${imagesToMove.length} images déplacées avec animation terminée`);
         }
