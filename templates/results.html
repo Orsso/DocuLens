@@ -317,7 +317,7 @@
             color: white;
         }
 
-        .btn-delete {
+        .btn-section-delete {
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
         }
@@ -521,6 +521,34 @@
             transform: scale(1.1);
             box-shadow: 0 6px 24px rgba(59, 130, 246, 0.6);
             background: linear-gradient(135deg, #60a5fa, var(--accent-blue));
+        }
+
+        .btn-image-delete {
+            position: absolute;
+            top: 8px;
+            right: 52px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+            pointer-events: all;
+        }
+
+        .btn-image-delete:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.6);
+            background: linear-gradient(135deg, #f87171, #ef4444);
         }
 
 
@@ -1097,6 +1125,8 @@
                                 Exporter ZIP
                             </button>
                             
+
+                            
                             <a href="/" class="btn-glass text-center">
                                 <i class="fas fa-arrow-left"></i>
                                 Retour
@@ -1224,6 +1254,8 @@
         </div>
     </div>
 
+
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -1248,6 +1280,9 @@
         
         // Sections détectées par le serveur
         let detectedSections = JSON.parse(document.getElementById('sectionsData').textContent);
+
+
+
         
         // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
@@ -1523,6 +1558,78 @@
         function closeDebugModal() {
             document.getElementById('debugModal').style.display = 'none';
         }
+
+        // === FONCTION DE SUPPRESSION SIMPLIFIÉE ===
+        
+        function deleteImage(filename, event) {
+            event.stopPropagation();
+            logInfo(`🗑️ Suppression de l'image: ${filename}`);
+            
+            // Trouver l'image dans les sections et la remettre dans les non assignées
+            let imageToMove = null;
+            
+            // Chercher dans les sections
+            for (let section of appState.sections) {
+                const imageIndex = section.images.findIndex(img => img.filename === filename);
+                if (imageIndex !== -1) {
+                    imageToMove = section.images.splice(imageIndex, 1)[0];
+                    break;
+                }
+            }
+            
+            // Si l'image n'était pas dans une section, elle était déjà dans les non assignées
+            if (imageToMove) {
+                // Remettre dans les images non assignées
+                appState.unassignedImages.push(imageToMove);
+                
+                // Désélectionner l'image si elle était sélectionnée
+                selectedImages.delete(filename);
+                
+                // Mettre à jour l'interface
+                renderSections();
+                updateUnassignedImages();
+                updateStats();
+                
+                logInfo(`✅ Image déplacée vers les non attribuées: ${filename}`);
+                showToast(`Image "${filename}" remise dans les non attribuées`, 'info');
+            }
+        }
+        
+        function showToast(message, type = 'info') {
+            // Simple notification toast
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+                color: white;
+                padding: 1rem 1.5rem;
+                border-radius: 8px;
+                z-index: 10000;
+                font-size: 0.9rem;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                backdrop-filter: blur(8px);
+                transform: translateX(100%);
+                transition: transform 0.3s ease;
+            `;
+            toast.textContent = message;
+            
+            document.body.appendChild(toast);
+            
+            // Animation d'entrée
+            setTimeout(() => {
+                toast.style.transform = 'translateX(0)';
+            }, 100);
+            
+            // Suppression automatique
+            setTimeout(() => {
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
         
         function clearLogs() {
             appLogs = [];
@@ -1667,7 +1774,7 @@
             console.log('📊 Images chargées:', extractedImages.length, 'images');
             console.log('📊 Première image:', extractedImages[0]);
             
-            appState.unassignedImages = [...extractedImages];
+            appState.unassignedImages = []; // Laisser vide, sera calculé correctement après l'initialisation
             initializeApp();
             updateStats();
         }
@@ -2071,7 +2178,7 @@
                                 <i class="fas fa-plus-circle"></i>
                             </button>
                         ` : ''}
-                        <button class="btn-icon btn-delete" onclick="deleteSection(${section.id})"
+                        <button class="btn-icon btn-section-delete" onclick="deleteSection(${section.id})"
                                 data-bs-toggle="tooltip" title="Supprimer cette ${level === 1 ? 'section' : level === 2 ? 'sous-section' : 'sous-sous-section'}">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -2116,6 +2223,10 @@
                         <button class="btn-assign" onclick="showSectionSelector('${image.filename}', event)" 
                                 data-bs-toggle="tooltip" title="Assigner à une section">
                             <i class="fas fa-arrow-right"></i>
+                        </button>
+                        <button class="btn-image-delete" onclick="deleteImage('${image.filename}', event)" 
+                                data-bs-toggle="tooltip" title="Supprimer l'image">
+                            <i class="fas fa-trash"></i>
                         </button>
                     </div>
                     <div class="image-info">
@@ -2522,6 +2633,9 @@
             const grid = document.getElementById('unassignedGrid');
             const badge = document.getElementById('unassignedBadge');
             
+            // TOUJOURS vider le contenu HTML d'abord pour éviter les doublons
+            grid.innerHTML = '';
+            
             if (appState.unassignedImages.length === 0) {
                 container.style.display = 'none';
             } else {
@@ -2708,6 +2822,8 @@
             // Ajouter toutes les images sélectionnées
             imagesToMove.push(...getSelectedImagesList());
             
+            logInfo(`📋 Déplacement de ${imagesToMove.length} images vers ${targetSectionId === 'unassigned' ? 'les non attribuées' : 'section ' + targetSectionId}`);
+            
             // Déplacer toutes les images groupées à la fin de la section (pas d'index spécifique)
             if (targetSectionId === 'unassigned') {
                 imagesToMove.forEach(filename => {
@@ -2723,9 +2839,13 @@
             // Nettoyer la sélection
             clearSelection();
             
+            // Mettre à jour l'interface APRÈS le déplacement
             renderSections();
+            updateUnassignedImages();
             updateStats();
             closeSectionSelector();
+            
+            logInfo(`✅ ${imagesToMove.length} images déplacées avec succès`);
         }
         
         function closeSectionSelector() {

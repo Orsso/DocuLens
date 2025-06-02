@@ -475,9 +475,25 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
         # Distribuer intelligemment les images entre les sections de la page
         for img_index, img in enumerate(image_list):
             try:
-                # Extraire l'image
+                # Extraire l'image avec annotations intégrées
                 xref = img[0]
-                pix = fitz.Pixmap(pdf_document, xref)
+                
+                # Extraction directe de l'image (méthode plus fiable)
+                try:
+                    # Extraction directe sans utiliser get_image_rects qui peut être imprécise
+                    pix = fitz.Pixmap(pdf_document, xref)
+                    print(f"  📷 Image {img_index+1} extraite (méthode directe)")
+                    
+                    # Si l'image est trop petite, c'est probablement un artefact
+                    if pix.width < 50 or pix.height < 50:
+                        print(f"  ⚠️  Image {img_index+1} trop petite ({pix.width}x{pix.height}), ignorée")
+                        pix = None
+                        continue
+                        
+                except Exception as e:
+                    # En cas d'erreur, ignorer cette image
+                    print(f"  ❌ Erreur extraction image {img_index+1}: {str(e)}")
+                    continue
                 
                 # Convertir en RGB si nécessaire
                 if pix.n - pix.alpha < 4:
@@ -623,6 +639,10 @@ def upload_file():
     
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
+        
+        # S'assurer que le dossier d'upload existe
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
@@ -641,6 +661,7 @@ def upload_file():
         
         try:
             # Créer un dossier de sortie spécifique pour ce fichier
+            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)  # S'assurer que le dossier parent existe
             output_subfolder = os.path.join(
                 app.config['OUTPUT_FOLDER'], 
                 clean_document_name

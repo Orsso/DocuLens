@@ -4,7 +4,11 @@
 
 Modern web app that extracts images from PDFs, automatically detects document sections, and lets you organize everything with a sleek drag & drop interface.
 
-## 🚀 Quick Start
+## 🌐 Essayer l'App
+
+**👉 [Tester DocuLens en ligne](https://doculens.onrender.com/)**
+
+## 🚀 Installation Locale
 
 ```bash
 git clone https://github.com/Orsso/DocuLens.git
@@ -15,16 +19,6 @@ python app.py
 ```
 
 Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
-
-## 🌐 Deploy for Free
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Orsso/DocuLens)
-
-1. Click the button above or go to [render.com](https://render.com)
-2. Connect your GitHub account  
-3. Select this repository
-4. Deploy automatically (takes ~2 min)
-5. Get your live URL: `https://yourapp.onrender.com`
 
 ## ✨ What it does
 
