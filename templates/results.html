@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DocuLens - Éditeur de Sections</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.css" rel="stylesheet">
@@ -250,6 +251,7 @@
             loadImagesFromServer();
             lockDocumentNameAfterProcessing();
             setupDragStackMouseTracking();
+            setupClickOutsideDeselectListener();
             
             // Nettoyer les tooltips au chargement pour éviter les résidus
             setTimeout(() => {
@@ -564,6 +566,9 @@
                 renderSections();
                 updateUnassignedImages();
                 updateStats();
+                
+                // Feedback visuel pour l'image déplacée vers les non attribuées
+                showRecentlyMovedFeedback([filename], 100);
                 
                 logInfo(`✅ Image déplacée vers les non attribuées: ${filename}`);
                 showToast(`Image "${filename}" remise dans les non attribuées`, 'info');
@@ -1043,6 +1048,10 @@
                 renderSections();
                 updateUnassignedImages();
                 updateStats();
+                
+                // Feedback visuel pour les images remontées vers le parent
+                showRecentlyMovedFeedback(imagesToAnimate, 100);
+                
                 logInfo(`✅ Animation sous-section vers parent terminée`);
             }, totalDelay);
         }
@@ -1288,13 +1297,16 @@
             }
             
             return `
-                <div class="image-card ${isSelected ? 'selected' : ''}" data-image-filename="${image.filename}" onclick="toggleImageSelectionByClick('${image.filename}')">
+                <div class="image-card ${isSelected ? 'selected' : ''}" 
+                     data-image-filename="${image.filename}" 
+                     onclick="toggleImageSelectionByClick('${image.filename}')"
+                     ondblclick="handleImageDoubleClick('${image.filename}', event)">
                     <img src="/image/${appState.documentName}/${image.filename}" 
                          alt="${image.filename}" class="image-preview" 
                          onerror="this.style.display='none'">
                     <div class="image-overlay">
                         <button class="btn-zoom" onclick="showImagePreview('${image.filename}', event)" 
-                                data-bs-toggle="tooltip" title="Agrandir l'image">
+                                data-bs-toggle="tooltip" title="Agrandir l'image (ou double-clic)">
                             <i class="fas fa-search-plus"></i>
                         </button>
 
@@ -1345,6 +1357,11 @@
                             const rect = evt.related.getBoundingClientRect();
                             updateDragStackPosition(rect.left, rect.top);
                         }
+                        
+                        // Animer le repositionnement fluide des autres images
+                        if (evt.to && evt.to.classList.contains('images-grid')) {
+                            animateImageReordering(evt.to);
+                        }
                     },
                     onAdd: function(evt) {
                         const sectionId = parseInt(evt.to.dataset.sectionId);
@@ -1370,14 +1387,51 @@
                         clearSelection();
                         renderSections();
                         updateUnassignedImages();
+                        
+                        // Feedback visuel pour les images déplacées
+                        showRecentlyMovedFeedback(imagesToMove, 50);
                     },
                     onUpdate: function(evt) {
                         // Réorganisation dans la même section
                         const sectionId = parseInt(evt.from.dataset.sectionId);
-                        if (sectionId && !isNaN(sectionId)) {
-                            reorderImagesInSection(sectionId);
+                        const imageFilename = evt.item.dataset.imageFilename;
+                        const newIndex = evt.newIndex;
+                        const isSelected = selectedImages.has(imageFilename);
+                        const imagesToHighlight = [];
+                        
+                        // Gérer le déplacement multiple si l'image fait partie d'une sélection
+                        if (isSelected && selectedImages.size > 1) {
+                            // Déplacement multiple : toutes les images sélectionnées de cette section
+                            const selectedInOrder = getSelectedImagesInSourceOrder(sectionId);
+                            imagesToHighlight.push(...selectedInOrder);
+                            
+                            // Réorganiser avec la nouvelle position pour toutes les images sélectionnées
+                            reorderMultipleImagesInSection(sectionId, selectedInOrder, newIndex);
+                            
+                            // Nettoyer la sélection après déplacement
+                            clearSelection();
+                        } else {
+                            // Déplacement simple
+                            if (!isSelected) {
+                                imagesToHighlight.push(imageFilename);
+                            } else {
+                                // Image sélectionnée seule
+                                imagesToHighlight.push(...getSelectedImagesList());
+                                clearSelection();
+                            }
+                            
+                            // Réorganisation normale
+                            if (sectionId && !isNaN(sectionId)) {
+                                reorderImagesInSection(sectionId);
+                            }
                         }
+                        
+                        // Rendre l'interface et mettre à jour
+                        renderSections();
                         updateUnassignedImages();
+                        
+                        // Feedback visuel pour les images réorganisées
+                        showRecentlyMovedFeedback(imagesToHighlight, 50);
                     },
                     onEnd: function(evt) {
                         // Nettoyer le stack et les états de drag
@@ -1599,6 +1653,60 @@
                 section.images = newOrder;
                 updateAllFilenames();
             }
+        }
+        
+        function reorderMultipleImagesInSection(sectionId, selectedImageFilenames, newIndex) {
+            logInfo(`🔄 Réorganisation multiple: ${selectedImageFilenames.length} images vers index ${newIndex} dans section ${sectionId}`);
+            
+            const section = appState.sections.find(s => s.id === sectionId);
+            if (!section) {
+                logError(`Section ${sectionId} introuvable pour réorganisation multiple`);
+                return;
+            }
+            
+            // Sauvegarder la liste originale pour calculer les indices
+            const originalImages = [...section.images];
+            
+            // Collecter les images sélectionnées dans l'ordre d'origine
+            const imagesToMove = [];
+            selectedImageFilenames.forEach(filename => {
+                const imageObj = section.images.find(img => img.filename === filename);
+                if (imageObj) {
+                    imagesToMove.push(imageObj);
+                }
+            });
+            
+            // Supprimer les images de leur position actuelle (ordre inverse pour éviter décalages)
+            selectedImageFilenames.slice().reverse().forEach(filename => {
+                const imageIndex = section.images.findIndex(img => img.filename === filename);
+                if (imageIndex !== -1) {
+                    section.images.splice(imageIndex, 1);
+                }
+            });
+            
+            // Calculer l'index d'insertion réel (ajusté après suppressions)
+            let insertIndex = newIndex;
+            
+            // Compter combien d'images sélectionnées étaient avant la position d'insertion
+            let selectedBeforeNewIndex = 0;
+            selectedImageFilenames.forEach(filename => {
+                const originalPos = originalImages.findIndex(img => img.filename === filename);
+                if (originalPos < newIndex) {
+                    selectedBeforeNewIndex++;
+                }
+            });
+            
+            // Ajuster l'index d'insertion
+            insertIndex = newIndex - selectedBeforeNewIndex;
+            
+            // S'assurer que l'index est valide
+            insertIndex = Math.max(0, Math.min(insertIndex, section.images.length));
+            
+            // Insérer toutes les images à la nouvelle position
+            section.images.splice(insertIndex, 0, ...imagesToMove);
+            
+            logInfo(`✅ ${imagesToMove.length} images déplacées vers index ${insertIndex} dans section ${sectionId}`);
+            updateAllFilenames();
         }
 
 
@@ -1957,6 +2065,13 @@
         let dragStackContainer = null;
         let isDraggingMultiple = false;
         
+        // Variables pour l'animation de repositionnement
+        const REORDER_ANIMATION = {
+            duration: 200,
+            easing: 'cubic-bezier(0.4, 0.0, 0.2, 1)',
+            enabled: true
+        };
+        
         // Variables pour la navigation d'images dans la modal
         let currentImageIndex = 0;
         let currentImagesList = [];
@@ -2265,6 +2380,9 @@
             updateUnassignedImages();
             updateStats();
             
+            // Feedback visuel pour les images déplacées
+            showRecentlyMovedFeedback(imagesToMove, 100);
+            
             logInfo(`✅ ${imagesToMove.length} images déplacées avec animation terminée`);
         }
         
@@ -2325,6 +2443,17 @@
             }
         }
         
+        function handleImageDoubleClick(imageFilename, event) {
+            // Empêcher la propagation pour éviter de déclencher le simple clic
+            event.preventDefault();
+            event.stopPropagation();
+            
+            logDebug(`🖱️ Double-clic détecté sur l'image: ${imageFilename}`);
+            
+            // Ouvrir directement l'aperçu de l'image
+            showImagePreview(imageFilename, event);
+        }
+        
         function updateSelectionStats() {
             document.getElementById('selectedCount').textContent = selectedImages.size;
         }
@@ -2355,25 +2484,46 @@
             return orderedSelectedImages;
         }
         
-        function getSelectedImagesInSourceOrder() {
+        function getSelectedImagesInSourceOrder(specificSectionId = null) {
             // Retourner les images sélectionnées dans l'ordre qu'elles avaient dans leurs sections d'origine
             const orderedSelectedImages = [];
             
-            // D'abord, chercher dans les images non attribuées
-            appState.unassignedImages.forEach(image => {
-                if (selectedImages.has(image.filename)) {
-                    orderedSelectedImages.push(image.filename);
+            if (specificSectionId !== null) {
+                // Chercher seulement dans une section spécifique
+                if (specificSectionId === 'unassigned') {
+                    appState.unassignedImages.forEach(image => {
+                        if (selectedImages.has(image.filename)) {
+                            orderedSelectedImages.push(image.filename);
+                        }
+                    });
+                } else {
+                    const section = appState.sections.find(s => s.id === specificSectionId);
+                    if (section) {
+                        section.images.forEach(image => {
+                            if (selectedImages.has(image.filename)) {
+                                orderedSelectedImages.push(image.filename);
+                            }
+                        });
+                    }
                 }
-            });
-            
-            // Ensuite, parcourir toutes les sections dans l'ordre hiérarchique
-            appState.sections.forEach(section => {
-                section.images.forEach(image => {
+            } else {
+                // Comportement original : chercher dans toutes les sections
+                // D'abord, chercher dans les images non attribuées
+                appState.unassignedImages.forEach(image => {
                     if (selectedImages.has(image.filename)) {
                         orderedSelectedImages.push(image.filename);
                     }
                 });
-            });
+                
+                // Ensuite, parcourir toutes les sections dans l'ordre hiérarchique
+                appState.sections.forEach(section => {
+                    section.images.forEach(image => {
+                        if (selectedImages.has(image.filename)) {
+                            orderedSelectedImages.push(image.filename);
+                        }
+                    });
+                });
+            }
             
             return orderedSelectedImages;
         }
@@ -2523,6 +2673,120 @@
             
             document.addEventListener('mouseup', function(e) {
                 isTrackingMouse = false;
+            });
+        }
+        
+        function setupClickOutsideDeselectListener() {
+            document.addEventListener('click', function(e) {
+                // Ne rien faire si aucune image n'est sélectionnée
+                if (selectedImages.size === 0) return;
+                
+                // Vérifier si le clic est sur une image ou un élément d'interface important
+                const clickedElement = e.target;
+                
+                // Ne pas désélectionner si on clique sur :
+                // - Une image ou ses enfants (boutons d'overlay, etc.)
+                // - Le sélecteur de section
+                // - Les modals
+                // - Les boutons de contrôle principaux
+                if (clickedElement.closest('.image-card') ||
+                    clickedElement.closest('.section-selector') ||
+                    clickedElement.closest('.modal') ||
+                    clickedElement.closest('.config-panel') ||
+                    clickedElement.closest('.stats-panel') ||
+                    clickedElement.closest('.debug-modal') ||
+                    clickedElement.closest('.btn-glass') ||
+                    clickedElement.closest('.section-controls') ||
+                    clickedElement.closest('.section-number') ||
+                    clickedElement.closest('[data-bs-toggle]')) {
+                    return;
+                }
+                
+                // Clic en dehors = désélectionner toutes les images
+                if (selectedImages.size > 0) {
+                    logDebug(`🖱️ Clic en dehors détecté, désélection de ${selectedImages.size} images`);
+                    clearSelection();
+                }
+            });
+        }
+        
+        // === FEEDBACK VISUEL POUR IMAGES DÉPLACÉES ===
+        
+        function showRecentlyMovedFeedback(imageFilenames, delay = 100) {
+            if (!imageFilenames || imageFilenames.length === 0) return;
+            
+            logDebug(`💫 Feedback visuel pour ${imageFilenames.length} images déplacées`);
+            
+            // Attendre que le DOM soit mis à jour puis appliquer l'effet
+            setTimeout(() => {
+                imageFilenames.forEach((filename, index) => {
+                    const imageCard = document.querySelector(`[data-image-filename="${filename}"]`);
+                    if (imageCard) {
+                        // Nettoyer d'abord toute animation précédente
+                        imageCard.classList.remove('recently-moved');
+                        
+                        // Forcer un reflow pour s'assurer que la classe est supprimée
+                        imageCard.offsetHeight;
+                        
+                        // Ajouter la classe avec un petit délai échelonné pour un effet cascade
+                        setTimeout(() => {
+                            imageCard.classList.add('recently-moved');
+                            
+                            // Supprimer la classe après l'animation (2.5s)
+                            setTimeout(() => {
+                                imageCard.classList.remove('recently-moved');
+                            }, 2500);
+                        }, index * 100); // 100ms de délai entre chaque image
+                    }
+                });
+            }, delay);
+        }
+        
+        // === ANIMATION FLUIDE DE REPOSITIONNEMENT (FLIP) ===
+        
+        function animateImageReordering(targetGrid) {
+            if (!REORDER_ANIMATION.enabled || !targetGrid) return;
+            
+            // Seulement animer si la grille contient plus d'une image (évite animation section vide)
+            const imageCards = targetGrid.querySelectorAll('.image-card:not(.being-dragged)');
+            if (imageCards.length <= 1) return;
+            
+            // 1. Capturer les positions avant réorganisation
+            const positions = new Map();
+            imageCards.forEach(card => {
+                positions.set(card, card.getBoundingClientRect());
+            });
+            
+            // 2. Attendre que SortableJS ait mis à jour le DOM
+            requestAnimationFrame(() => {
+                // 3. Calculer les changements et animer
+                imageCards.forEach(card => {
+                    const oldPos = positions.get(card);
+                    const newPos = card.getBoundingClientRect();
+                    
+                    const deltaX = oldPos.left - newPos.left;
+                    const deltaY = oldPos.top - newPos.top;
+                    
+                    // Si la position a changé, animer le déplacement
+                    if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
+                        // Inverser instantanément (FLIP technique)
+                        card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                        card.style.transition = 'none';
+                        card.classList.add('drag-reordering');
+                        
+                        // Animer vers la position finale
+                        requestAnimationFrame(() => {
+                            card.style.transform = '';
+                            card.style.transition = `transform ${REORDER_ANIMATION.duration}ms ${REORDER_ANIMATION.easing}`;
+                            
+                            // Nettoyer après l'animation
+                            setTimeout(() => {
+                                card.classList.remove('drag-reordering');
+                                card.style.transition = '';
+                            }, REORDER_ANIMATION.duration);
+                        });
+                    }
+                });
             });
         }
         

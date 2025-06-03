@@ -24,6 +24,7 @@ Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 
 - **🔍 Smart extraction**: Finds images and sections automatically
 - **🎨 Intuitive interface**: Drag & drop section organization with visual editing tools
+- **🖊️ Image annotations**: Built-in image editor with drawing tools and annotations (beta)
 - **📝 Custom naming**: Personalize section nomenclature
 - **📦 Clean export**: Organized ZIP with custom filenames
 

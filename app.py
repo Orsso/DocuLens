@@ -319,13 +319,13 @@ def detect_sections(pdf_document):
     return sections
 
 def calculate_image_hash(image_data):
-    """Calcule un hash perceptuel pour détecter les images similaires"""
+    """Calcule un hash perceptuel pour détecter les images vraiment identiques"""
     try:
         # Ouvrir l'image
         img = Image.open(BytesIO(image_data))
         
-        # Convertir en niveau de gris et redimensionner pour comparaison
-        img = img.convert('L').resize((8, 8), Image.LANCZOS)
+        # Hash plus précis : 16x16 pixels au lieu de 8x8
+        img = img.convert('L').resize((16, 16), Image.LANCZOS)
         
         # Calculer le hash perceptuel (average hash)
         pixels = list(img.getdata())
@@ -337,19 +337,22 @@ def calculate_image_hash(image_data):
         print(f"Erreur calcul hash: {e}")
         return None
 
-def are_images_similar(hash1, hash2, threshold=6):
-    """Compare deux hashs et retourne True si les images sont similaires"""
+def are_images_similar(hash1, hash2, threshold=8):
+    """Compare deux hashs et retourne True si les images sont vraiment identiques"""
     if not hash1 or not hash2 or len(hash1) != len(hash2):
         return False
     
     # Compter les différences bit par bit
     differences = sum(c1 != c2 for c1, c2 in zip(hash1, hash2))
+    
+    # Avec hash 16x16 (256 bits), seuil plus strict :
+    # 8 bits sur 256 = ~3% de différence maximum (très conservateur)
     return differences <= threshold
 
-def filter_duplicate_images(image_data_list, min_occurrences=3):
+def filter_duplicate_images(image_data_list, min_occurrences=4):
     """
     Filtre les images qui apparaissent plus de min_occurrences fois
-    (logos, headers, footers, etc.)
+    (logos, headers, footers, etc.) en conservant le meilleur exemplaire
     """
     print(f"\n🔍 Analyse des images dupliquées...")
     
@@ -387,15 +390,21 @@ def filter_duplicate_images(image_data_list, min_occurrences=3):
         if len(group) > 1:
             duplicate_groups.append(group)
     
-    # Identifier les images à filtrer
+    # Identifier les images à filtrer (nouvelle logique : conserver le meilleur)
     filtered_indices = set()
     for group in duplicate_groups:
         if len(group) >= min_occurrences:
             print(f"  📋 Groupe d'images dupliquées détecté: {len(group)} occurrences")
             print(f"     Exemple: page {group[0]['metadata']['page']}")
-            # Marquer toutes les images du groupe pour filtrage
+            
+            # Trouver le meilleur exemplaire (par taille d'image)
+            best_img = max(group, key=lambda img: len(img['data']))
+            print(f"     Meilleur exemplaire conservé: page {best_img['metadata']['page']} ({len(best_img['data'])} bytes)")
+            
+            # Marquer les autres pour filtrage (pas le meilleur)
             for img in group:
-                filtered_indices.add(img['index'])
+                if img['index'] != best_img['index']:
+                    filtered_indices.add(img['index'])
     
     # Retourner les images non-filtrées
     filtered_images = []
@@ -538,7 +547,7 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
     
     # Filtrer les images dupliquées selon l'option
     if filter_duplicates:
-        filtered_images = filter_duplicate_images(all_images_data, min_occurrences=3)
+        filtered_images = filter_duplicate_images(all_images_data, min_occurrences=4)
     else:
         filtered_images = all_images_data
         print(f"🔍 Filtrage désactivé - {len(filtered_images)} images conservées")
