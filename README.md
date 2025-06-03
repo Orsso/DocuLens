@@ -1,6 +1,6 @@
 # DocuLens
-1
-**📄 Extract and organize PDF images with smart section detection**
+
+##Extract and organize PDF images with smart section detection
 
 Modern web app that extracts images from PDFs, automatically detects document sections, and lets you organize everything with a sleek drag & drop interface.
 
@@ -20,14 +20,14 @@ python app.py
 
 Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 
-## ✨ What it does
+## What it does
 
 - **🔍 Smart extraction**: Finds images and sections automatically
 - **🎨 Intuitive interface**: Drag & drop section organization with visual editing tools
 - **📝 Custom naming**: Personalize section nomenclature
 - **📦 Clean export**: Organized ZIP with custom filenames
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 **Backend**: Flask + PyMuPDF  
 **Frontend**: Bootstrap + SortableJS + Modern CSS
