@@ -1,6 +1,6 @@
 # DocuLens
 
-##Extract and organize PDF images with smart section detection
+## Extract and organize PDF images with smart section detection
 
 Modern web app that extracts images from PDFs, automatically detects document sections, and lets you organize everything with a sleek drag & drop interface.
 
