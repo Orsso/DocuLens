@@ -4,11 +4,11 @@
 
 Modern web app that extracts images from PDFs, automatically detects document sections, and lets you organize everything with a sleek drag & drop interface.
 
-## 🌐 Essayer l'App
+## 🌐 Test Online
 
-**👉 [Test the app](https://doculens.onrender.com/)**
+**👉 [DocuLens](https://doculens.onrender.com/)**
 
-## 🚀 Installation Locale
+## 🚀 Local installation
 
 ```bash
 git clone https://github.com/Orsso/DocuLens.git
@@ -23,7 +23,7 @@ Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 ## ✨ What it does
 
 - **🔍 Smart extraction**: Finds images and sections automatically
-- **🎨 Visual editor**: Drag & drop interface with 3-level hierarchy  
+- **🎨 Intuitive interface**: Drag & drop section organization with visual editing tools
 - **📝 Custom naming**: Personalize section nomenclature
 - **📦 Clean export**: Organized ZIP with custom filenames
 
