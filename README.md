@@ -1,12 +1,12 @@
 # DocuLens
-
+1
 **📄 Extract and organize PDF images with smart section detection**
 
 Modern web app that extracts images from PDFs, automatically detects document sections, and lets you organize everything with a sleek drag & drop interface.
 
 ## 🌐 Essayer l'App
 
-**👉 [Tester DocuLens en ligne](https://doculens.onrender.com/)**
+**👉 [Test the app](https://doculens.onrender.com/)**
 
 ## 🚀 Installation Locale
 
@@ -41,6 +41,17 @@ DocuLens/
 ├── uploads/            # PDF input
 └── extracted_images/   # Temp output
 ```
+
+## 🗺️ Roadmap
+
+Here's a brief overview of planned features and improvements:
+
+*   **Refine the editor**: The current image editor is in beta and will be further polished for stability and features.
+*   **Image Import**: Allow users to import existing image files directly into the application.
+*   **Image Merge Function**: Implement a feature to merge multiple selected images into a single image.
+*   **Project Save/Load**: Enable users to save their current work (extracted images, section structure, annotations) as a project file and load it back later.
+*   **Zoom Management in Section Arranger**: Add zoom controls (zoom in, zoom out, fit to screen) to the section arrangement view for better navigation with a large number of images.
+*   **AI-powered Auto-indexing**: Implement intelligent auto-tagging and indexing of images based on their content.
 
 ## 🤝 Contributing
 
