@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 import fitz  # PyMuPDF
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 from werkzeug.utils import secure_filename
@@ -411,7 +412,7 @@ def filter_duplicate_images(image_data_list, min_occurrences=3):
 def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_duplicates=True, detect_hierarchy=True):
     """
     Extrait les images du PDF en respectant la nomenclature
-    CLR-[NOM DU DOC]-X.X.X n_Y.jpg avec filtrage des images dupliquées
+    CRL-[NOM DU DOC]-X.X.X n_Y.jpg avec filtrage des images dupliquées
     """
     pdf_document = fitz.open(pdf_path)
     
@@ -559,7 +560,7 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
         image_number = section_image_counts[section_number]
         
         # Créer le nom de fichier selon la nomenclature
-        filename = f"CLR-{clean_filename}-{section_number} n_{image_number}.jpg"
+        filename = f"CRL-{clean_filename}-{section_number} n_{image_number}.jpg"
         filepath = os.path.join(output_folder, filename)
         
         # Sauvegarder l'image en JPEG
@@ -737,7 +738,7 @@ def get_images_json(folder_name):
     if os.path.exists(folder_path):
         for filename in os.listdir(folder_path):
             if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-                # Extraire les infos du nom de fichier (CLR-DOC-X n_Y.ext)
+                # Extraire les infos du nom de fichier (CRL-DOC-X n_Y.ext)
                 parts = filename.split('-')
                 if len(parts) >= 3:
                     try:
@@ -808,6 +809,88 @@ def export_custom():
     except Exception as e:
         print(f"Erreur lors de l'export personnalisé: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-edited-image', methods=['POST'])
+def save_edited_image():
+    """Sauvegarde une image éditée"""
+    try:
+        
+        data = request.get_json()
+        
+        # Valider les données
+        if not data or 'original_filename' not in data or 'document_name' not in data or 'edited_image_data' not in data:
+            return jsonify({'error': 'Données manquantes'}), 400
+        
+        original_filename = data['original_filename']
+        document_name = data['document_name']
+        edited_image_data = data['edited_image_data']
+        replace_original = data.get('replace_original', False)
+        
+        # Décoder l'image base64
+        if edited_image_data.startswith('data:'):
+            # Supprimer le préfixe data:image/png;base64,
+            header, encoded = edited_image_data.split(',', 1)
+            image_data = base64.b64decode(encoded)
+        else:
+            image_data = base64.b64decode(edited_image_data)
+        
+        # Créer le dossier de destination
+        document_folder = os.path.join(app.config['OUTPUT_FOLDER'], document_name)
+        os.makedirs(document_folder, exist_ok=True)
+        
+        original_path = os.path.join(document_folder, original_filename)
+        name, ext = os.path.splitext(original_filename)
+        
+        if replace_original:
+            # Mode: Remplacer l'image originale
+            if os.path.exists(original_path):
+                # Faire une sauvegarde de l'original
+                backup_filename = f"{name}_original{ext}"
+                backup_path = os.path.join(document_folder, backup_filename)
+                if not os.path.exists(backup_path):
+                    import shutil
+                    shutil.copy2(original_path, backup_path)
+                
+                # Remplacer par la version éditée
+                with open(original_path, 'wb') as f:
+                    f.write(image_data)
+                
+                result_filename = original_filename
+            else:
+                # Si l'original n'existe pas, créer une nouvelle image
+                with open(original_path, 'wb') as f:
+                    f.write(image_data)
+                result_filename = original_filename
+        else:
+            # Mode: Créer une nouvelle image
+            # Générer un nom unique pour l'image éditée
+            counter = 1
+            edited_filename = f"{name}_edited{ext}"
+            edited_path = os.path.join(document_folder, edited_filename)
+            
+            # Si le fichier existe déjà, ajouter un numéro
+            while os.path.exists(edited_path):
+                edited_filename = f"{name}_edited_{counter}{ext}"
+                edited_path = os.path.join(document_folder, edited_filename)
+                counter += 1
+            
+            # Sauvegarder la nouvelle image éditée
+            with open(edited_path, 'wb') as f:
+                f.write(image_data)
+            
+            result_filename = edited_filename
+        
+        return jsonify({
+            'success': True,
+            'filename': result_filename,
+            'original_filename': original_filename,
+            'replace_original': replace_original,
+            'message': 'Image sauvegardée avec succès'
+        })
+        
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde de l'image éditée: {e}")
+        return jsonify({'error': 'Erreur lors de la sauvegarde'}), 500
 
 if __name__ == '__main__':
     import os

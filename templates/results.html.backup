@@ -1117,7 +1117,7 @@
                         <div class="config-form">
                             <div class="form-group">
                                 <label class="form-label">Préfixe</label>
-                                <input type="text" id="prefixInput" class="form-control" value="CLR" placeholder="CLR">
+                                <input type="text" id="prefixInput" class="form-control" value="CRL" placeholder="CRL">
                             </div>
                             
                             <div class="form-group">
@@ -1312,7 +1312,7 @@
         let appState = {
             sections: [],
             unassignedImages: [],
-            prefix: 'CLR',
+            prefix: 'CRL',
             documentName: '{{ result.document_name }}',
             format: 'jpg',
             nextSectionId: 1,
@@ -1764,7 +1764,7 @@
         function setupEventListeners() {
             // Configuration inputs
             document.getElementById('prefixInput').addEventListener('input', (e) => {
-                appState.prefix = e.target.value || 'CLR';
+                appState.prefix = e.target.value || 'CRL';
                 updateAllFilenames();
             });
             

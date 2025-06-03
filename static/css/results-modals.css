@@ -88,6 +88,32 @@
     gap: 0.5rem;
 }
 
+.modal-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.btn-purple {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.9), rgba(147, 51, 234, 0.9));
+    border: 1px solid rgba(168, 85, 247, 0.5);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-purple:hover {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 1), rgba(147, 51, 234, 1));
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+}
+
 .debug-button {
     position: fixed;
     bottom: 20px;

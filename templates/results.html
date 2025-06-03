@@ -11,6 +11,7 @@
     <link href="{{ url_for('static', filename='css/results-sections.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/results-images.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/results-modals.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/image-editor.css') }}" rel="stylesheet">
 </head>
 <body>
     <div class="container-fluid px-4 py-3">
@@ -26,7 +27,7 @@
                         <div class="config-form">
                             <div class="form-group">
                                 <label class="form-label">Préfixe</label>
-                                <input type="text" id="prefixInput" class="form-control" value="CLR" placeholder="CLR">
+                                <input type="text" id="prefixInput" class="form-control" value="CRL" placeholder="CRL">
                             </div>
                             
                             <div class="form-group">
@@ -174,6 +175,11 @@
                 </div>
                 <div class="modal-footer">
                     <div id="modalImageInfo" class="text-white"></div>
+                    <div class="modal-actions">
+                        <button id="editFromModalBtn" class="btn btn-purple" onclick="editCurrentModalImage()" title="Éditer cette image">
+                            <i class="fas fa-edit"></i> Éditer l'image
+                        </button>
+                    </div>
                     <div class="modal-keyboard-hint">
                         <small class="text-white-50">
                             <i class="fas fa-keyboard"></i> Utilisez ← → pour naviguer, Échap pour fermer
@@ -221,7 +227,7 @@
         let appState = {
             sections: [],
             unassignedImages: [],
-            prefix: 'CLR',
+            prefix: 'CRL',
             documentName: '{{ result.document_name }}',
             format: 'jpg',
             nextSectionId: 1,
@@ -252,6 +258,15 @@
             }, 1000);
         });
 
+        // Debug info
+        function logDebug(message, data = null) {
+            if (data) {
+                console.log(`🐛 ${message}`, data);
+            } else {
+                console.log(`🐛 ${message}`);
+            }
+        }
+        
         function initializeApp() {
             // Debug : afficher toutes les images extraites
             console.log('🖼️ Images extraites du serveur:', extractedImages.length);
@@ -387,129 +402,136 @@
         }
         
         function showDebugModal() {
-            const debugData = debugImageAssignment();
-            const modalBody = document.getElementById('debugModalBody');
+            const modal = document.getElementById('debugModal');
+            const body = document.getElementById('debugModalBody');
             
-            let html = `
-                <div class="debug-section">
-                    <div class="debug-section-title">
-                        <i class="fas fa-chart-bar"></i>
-                        Résumé Global
-                    </div>
-                    <div class="debug-info">Total images extraites: <strong>${debugData.totalExtracted}</strong></div>
-                    <div class="debug-info">Images assignées: <strong>${debugData.totalAssigned}</strong></div>
-                    <div class="debug-info">Images non attribuées: <strong>${debugData.unassigned}</strong></div>
-                    <div class="debug-info ${debugData.totalExtracted === debugData.totalAssigned + debugData.unassigned ? 'success' : 'error'}">
-                        État: ${debugData.totalExtracted === debugData.totalAssigned + debugData.unassigned ? '✅ Toutes les images sont comptabilisées' : '❌ Des images sont perdues!'}
-                    </div>
-                </div>
-                
-                <div class="debug-section">
-                    <div class="debug-section-title">
-                        <i class="fas fa-list"></i>
-                        Sections Détectées (${debugData.sections.length})
-                    </div>
-            `;
-            
-            debugData.sections.forEach(section => {
-                const levelIcon = section.level === 1 ? '<i class="fas fa-book"></i>' : section.level === 2 ? '<i class="fas fa-file-alt"></i>' : '<i class="fas fa-sticky-note"></i>';
-                const indent = '&nbsp;&nbsp;'.repeat((section.level - 1) * 2);
-                html += `
-                    <div class="debug-info">
-                        ${indent}${levelIcon} Section ${section.number} 
-                        ${section.nomenclature !== section.number ? `(→ ${section.nomenclature})` : ''}
-                        - <strong>${section.imageCount} images</strong>
-                    </div>
-                `;
-            });
-            
+            let html = '<div class="debug-section">';
+            html += '<div class="debug-section-title">État de l\'Application</div>';
+            html += `<div class="debug-info">Sections: ${appState.sections.length}</div>`;
+            html += `<div class="debug-info">Images totales: ${extractedImages.length}</div>`;
+            html += `<div class="debug-info">Images non assignées: ${appState.unassignedImages.length}</div>`;
+            html += `<div class="debug-info">Images sélectionnées: ${selectedImages.size}</div>`;
             html += '</div>';
             
-            // Ajouter les images non attribuées si il y en a
-            if (debugData.unassigned > 0) {
-                html += `
-                    <div class="debug-section">
-                        <div class="debug-section-title">
-                            <i class="fas fa-inbox"></i>
-                            Images Non Attribuées (${debugData.unassigned})
-                        </div>
-                `;
-                appState.unassignedImages.forEach(img => {
-                    html += `<div class="debug-info">📄 ${img.filename} (Page ${img.page})</div>`;
+            // Diagnostic spécial pour les duplications
+            html += '<div class="debug-section">';
+            html += '<div class="debug-section-title">Diagnostic Duplication</div>';
+            
+            // Compter les doublons dans extractedImages
+            const filenameCount = {};
+            extractedImages.forEach(img => {
+                filenameCount[img.filename] = (filenameCount[img.filename] || 0) + 1;
+            });
+            const duplicatesInExtracted = Object.entries(filenameCount).filter(([filename, count]) => count > 1);
+            
+            html += `<div class="debug-info ${duplicatesInExtracted.length > 0 ? 'error' : 'success'}">`;
+            html += `Doublons dans extractedImages: ${duplicatesInExtracted.length}</div>`;
+            if (duplicatesInExtracted.length > 0) {
+                duplicatesInExtracted.forEach(([filename, count]) => {
+                    html += `<div class="debug-info error">  • ${filename}: ${count} occurrences</div>`;
                 });
-                html += '</div>';
             }
             
-            // Ajouter les problèmes s'il y en a
-            if (debugData.problems.length > 0) {
-                html += `
-                    <div class="debug-section">
-                        <div class="debug-section-title">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            Problèmes Détectés
-                        </div>
-                `;
-                debugData.problems.forEach(problem => {
-                    html += `<div class="debug-info ${problem.type}">${problem.message}</div>`;
-                    if (problem.details && problem.details.length > 0) {
-                        problem.details.forEach(detail => {
-                            html += `<div class="debug-info">&nbsp;&nbsp;• ${typeof detail === 'string' ? detail : detail.filename}</div>`;
+            // Compter les doublons dans le DOM
+            const domFilenames = {};
+            document.querySelectorAll('[data-image-filename]').forEach(card => {
+                const filename = card.getAttribute('data-image-filename');
+                domFilenames[filename] = (domFilenames[filename] || 0) + 1;
+            });
+            const duplicatesInDOM = Object.entries(domFilenames).filter(([filename, count]) => count > 1);
+            
+            html += `<div class="debug-info ${duplicatesInDOM.length > 0 ? 'error' : 'success'}">`;
+            html += `Doublons dans le DOM: ${duplicatesInDOM.length}</div>`;
+            if (duplicatesInDOM.length > 0) {
+                duplicatesInDOM.forEach(([filename, count]) => {
+                    html += `<div class="debug-info error">  • ${filename}: ${count} cartes</div>`;
                         });
                     }
+            
+            // Compter les doublons dans les sections
+            const sectionFilenames = {};
+            appState.sections.forEach(section => {
+                section.images.forEach(img => {
+                    sectionFilenames[img.filename] = (sectionFilenames[img.filename] || 0) + 1;
                 });
-                html += '</div>';
+            });
+            const duplicatesInSections = Object.entries(sectionFilenames).filter(([filename, count]) => count > 1);
+            
+            html += `<div class="debug-info ${duplicatesInSections.length > 0 ? 'error' : 'success'}">`;
+            html += `Doublons dans les sections: ${duplicatesInSections.length}</div>`;
+            if (duplicatesInSections.length > 0) {
+                duplicatesInSections.forEach(([filename, count]) => {
+                    html += `<div class="debug-info error">  • ${filename}: ${count} références</div>`;
+                });
             }
             
-            // Ajouter la section des logs récents
-            html += `
-                <div class="debug-section">
-                    <div class="debug-section-title">
-                        <i class="fas fa-list-ul"></i>
-                        Logs Récents (${appLogs.length} entrées)
-                                                 <button class="debug-clear-logs" onclick="clearLogs()" style="margin-left: 1rem; background: rgba(239, 68, 68, 0.8); border: none; border-radius: 4px; padding: 0.25rem 0.5rem; color: white; font-size: 0.8rem; cursor: pointer;">
-                             <i class="fas fa-trash"></i> Vider
-                         </button>
-                         <button class="debug-diagnose" onclick="diagnoseSelectionIssue()" style="margin-left: 0.5rem; background: rgba(59, 130, 246, 0.8); border: none; border-radius: 4px; padding: 0.25rem 0.5rem; color: white; font-size: 0.8rem; cursor: pointer;">
-                             <i class="fas fa-stethoscope"></i> Diagnostiquer
-                         </button>
-                         <button class="debug-sync" onclick="syncSelectionStateWithDOM()" style="margin-left: 0.5rem; background: rgba(16, 185, 129, 0.8); border: none; border-radius: 4px; padding: 0.25rem 0.5rem; color: white; font-size: 0.8rem; cursor: pointer;">
-                             <i class="fas fa-sync-alt"></i> Sync DOM
-                         </button>
-                    </div>
-                    <div class="debug-logs-container" style="max-height: 200px; overflow-y: auto; background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem;">
-            `;
+            html += '</div>';
+
+            // Section Console des logs
+            html += '<div class="debug-section">';
+            html += '<div class="debug-section-title">Console des Logs</div>';
+            html += '<div style="max-height: 300px; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;">';
             
-            if (appLogs.length === 0) {
-                html += `<div class="debug-info" style="font-style: italic; opacity: 0.7;">Aucun log disponible</div>`;
-            } else {
-                appLogs.slice(0, 20).forEach(log => {
-                    const iconClass = log.type === 'error' ? 'fas fa-exclamation-circle' : 
-                                     log.type === 'info' ? 'fas fa-info-circle' : 'fas fa-bug';
-                    const typeClass = log.type === 'error' ? 'error' : log.type === 'info' ? 'success' : '';
+            if (appLogs && appLogs.length > 0) {
+                // Afficher les 20 derniers logs
+                const recentLogs = appLogs.slice(0, 20);
+                recentLogs.forEach(log => {
+                    const typeColor = log.type === 'error' ? '#ff6b6b' : 
+                                     log.type === 'info' ? '#4dabf7' : 
+                                     log.type === 'debug' ? '#69db7c' : '#ffd43b';
                     
-                    html += `
-                        <div class="debug-info ${typeClass}" style="margin-bottom: 0.5rem; padding: 0.25rem; border-left: 2px solid ${log.type === 'error' ? '#ef4444' : log.type === 'info' ? '#10b981' : '#f59e0b'};">
-                            <span style="color: var(--text-secondary); font-size: 0.8rem;">[${log.time}]</span>
-                            <i class="${iconClass}" style="margin: 0 0.5rem; color: ${log.type === 'error' ? '#ef4444' : log.type === 'info' ? '#10b981' : '#f59e0b'};"></i>
-                            ${log.message}
-                            ${log.data ? `<br><span style="margin-left: 2rem; opacity: 0.8; font-size: 0.9em;">${log.data}</span>` : ''}
-                        </div>
-                    `;
+                    html += `<div style="color: ${typeColor}; margin-bottom: 0.25rem; border-bottom: 1px solid #333; padding-bottom: 0.25rem;">`;
+                    html += `<span style="color: #888;">[${log.time}]</span> `;
+                    html += `<span style="color: ${typeColor}; font-weight: bold;">${log.type.toUpperCase()}:</span> `;
+                    html += `<span style="color: #fff;">${log.message}</span>`;
+                    if (log.data) {
+                        html += `<br/><span style="color: #aaa; margin-left: 2rem;">${JSON.stringify(log.data)}</span>`;
+                    }
+                    html += '</div>';
                 });
                 
-                if (appLogs.length > 20) {
-                    html += `<div class="debug-info" style="font-style: italic; opacity: 0.7; text-align: center;">... et ${appLogs.length - 20} logs plus anciens</div>`;
-                }
+                html += `<div style="color: #888; text-align: center; margin-top: 0.5rem; font-style: italic;">`;
+                html += `Affichage des 20 derniers logs sur ${appLogs.length} total`;
+                html += '</div>';
+            } else {
+                html += '<div style="color: #888; text-align: center; padding: 1rem;">Aucun log disponible</div>';
             }
             
-            html += '</div></div>';
-            
-            modalBody.innerHTML = html;
-            document.getElementById('debugModal').style.display = 'flex';
+            html += '</div>';
+            html += '<div style="margin-top: 0.5rem;">';
+            html += '<button class="btn btn-secondary btn-sm" onclick="clearLogs(); showDebugModal();">Vider les logs</button>';
+            html += '</div>';
+            html += '</div>';
+
+            body.innerHTML = html;
+            modal.style.display = 'flex';
         }
         
         function closeDebugModal() {
             document.getElementById('debugModal').style.display = 'none';
+        }
+
+        // Style pour les éléments de debug
+        const debugStyles = `
+            .debug-info.success { color: #10b981; }
+            .debug-info.warning { color: #f59e0b; }
+            .debug-info.error { color: #ef4444; font-weight: bold; }
+            .debug-section { margin-bottom: 1.5rem; }
+            .debug-section-title { 
+                font-weight: bold; 
+                color: var(--accent-blue); 
+                border-bottom: 1px solid var(--accent-blue); 
+                padding-bottom: 0.5rem; 
+                margin-bottom: 1rem; 
+            }
+        `;
+        
+        // Ajouter les styles si pas déjà ajoutés
+        if (!document.getElementById('debugStyles')) {
+            const styleSheet = document.createElement('style');
+            styleSheet.id = 'debugStyles';
+            styleSheet.textContent = debugStyles;
+            document.head.appendChild(styleSheet);
         }
 
         // === FONCTION DE SUPPRESSION SIMPLIFIÉE ===
@@ -673,7 +695,7 @@
         function setupEventListeners() {
             // Configuration inputs
             document.getElementById('prefixInput').addEventListener('input', (e) => {
-                appState.prefix = e.target.value || 'CLR';
+                appState.prefix = e.target.value || 'CRL';
                 updateAllFilenames();
             });
             
@@ -1050,20 +1072,31 @@
         }
 
         function renderSections() {
+            logInfo('[DIAGNOSTIC] renderSections appelée - début du rendu');
+            
             const container = document.getElementById('sectionsContainer');
             const emptyState = document.getElementById('emptyState');
             
             if (appState.sections.length === 0) {
                 container.innerHTML = '';
                 emptyState.style.display = 'block';
+                logInfo('[DIAGNOSTIC] Aucune section, affichage de l\'état vide');
                 return;
             }
             
             emptyState.style.display = 'none';
             
+            // Compter les images avant le rendu
+            const imageCountBeforeRender = document.querySelectorAll('[data-image-filename]').length;
+            
             // Organiser les sections par hiérarchie
             const organizedHTML = buildHierarchicalSections(appState.sections);
             container.innerHTML = organizedHTML;
+            
+            // Compter les images après le rendu
+            const imageCountAfterRender = document.querySelectorAll('[data-image-filename]').length;
+            
+            logInfo(`[DIAGNOSTIC] Images dans le DOM - Avant: ${imageCountBeforeRender}, Après: ${imageCountAfterRender}`);
             
             // Forcer la synchronisation de l'état de sélection
             syncSelectionStateWithDOM();
@@ -1079,6 +1112,8 @@
             tooltipTriggerList.map(function (tooltipTriggerEl) {
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
+            
+            logInfo('[DIAGNOSTIC] renderSections terminée');
         }
         
         function buildHierarchicalSections(sections) {
@@ -1262,6 +1297,7 @@
                                 data-bs-toggle="tooltip" title="Agrandir l'image">
                             <i class="fas fa-search-plus"></i>
                         </button>
+
                         <button class="btn-assign" onclick="showSectionSelector('${image.filename}', event)" 
                                 data-bs-toggle="tooltip" title="Assigner à une section">
                             <i class="fas fa-arrow-right"></i>
@@ -1784,8 +1820,8 @@
             // Mettre à jour le compteur
             modalCounter.textContent = `${currentImageIndex + 1} / ${currentImagesList.length}`;
             
-            // Charger la nouvelle image
-            const newImageSrc = `/image/${appState.documentName}/${currentImage.filename}`;
+            // Charger la nouvelle image avec timestamp anti-cache
+            const newImageSrc = `/image/${appState.documentName}/${currentImage.filename}?t=${Date.now()}`;
             
             modalImage.onload = function() {
                 loading.style.display = 'none';
@@ -1873,6 +1909,33 @@
             modalElement.addEventListener('shown.bs.modal', function() {
                 modalElement.focus();
             });
+        }
+
+        // Fonction pour éditer l'image depuis la modal de preview
+        function editCurrentModalImage() {
+            if (currentImagesList.length > 0 && currentImageIndex >= 0 && currentImageIndex < currentImagesList.length) {
+                const currentImage = currentImagesList[currentImageIndex];
+                logInfo(`🎨 Ouverture éditeur depuis modal pour: ${currentImage.filename}`);
+                
+                // Vérifier que l'éditeur d'images est disponible
+                if (typeof window.openImageEditor !== 'function') {
+                    logError('Éditeur d\'images non disponible');
+                    alert('L\'éditeur d\'images n\'est pas encore chargé. Veuillez réessayer dans quelques secondes.');
+                    return;
+                }
+                
+                // Fermer la modal de preview
+                if (imageModalInstance) {
+                    imageModalInstance.hide();
+                }
+                
+                // Ouvrir l'éditeur d'images
+                setTimeout(() => {
+                    window.openImageEditor(currentImage.filename, currentImage);
+                }, 300); // Délai pour que la modal se ferme proprement
+            } else {
+                logError('Aucune image courante pour édition');
+            }
         }
 
         // Fonction pour toggle les tips
@@ -2506,6 +2569,13 @@
                 alert('Erreur lors de l\'export. Veuillez réessayer.');
             });
         }
+
     </script>
+
+    <!-- Include Image Editor Modal -->
+    {% include 'partials/image-editor-modal.html' %}
+
+    <!-- Image Editor Scripts -->
+    <script src="{{ url_for('static', filename='js/image-editor.js') }}"></script>
 </body>
 </html> 

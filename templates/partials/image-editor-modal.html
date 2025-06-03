@@ -1,0 +1,213 @@
+<!-- Modal d'Édition d'Images -->
+<div class="modal fade" id="imageEditorModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content image-editor-modal">
+            <!-- Header de l'Éditeur -->
+            <div class="modal-header image-editor-header">
+                <div class="editor-title">
+                    <i class="fas fa-edit"></i>
+                    <span>Éditeur d'Images</span>
+                    <span id="editorImageName" class="editor-image-name"></span>
+                </div>
+                
+                <!-- Toolbar Principal -->
+                <div class="editor-toolbar">
+                    <!-- Outils de Forme -->
+                    <div class="toolbar-group">
+                        <button class="toolbar-btn active" data-tool="select" title="Sélection">
+                            <i class="fas fa-mouse-pointer"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="rectangle" title="Rectangle">
+                            <i class="fas fa-square"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="circle" title="Cercle">
+                            <i class="fas fa-circle"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="arrow" title="Flèche">
+                            <i class="fas fa-long-arrow-alt-right"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="line" title="Ligne">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="text" title="Texte">
+                            <i class="fas fa-font"></i>
+                        </button>
+                        <button class="toolbar-btn" data-tool="pen" title="Stylo">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Couleurs Rapides -->
+                    <div class="toolbar-group">
+                        <div class="color-palette">
+                            <div class="color-btn active" data-color="#FF0000" style="background: #FF0000;" title="Rouge"></div>
+                            <div class="color-btn" data-color="#00FF00" style="background: #00FF00;" title="Vert"></div>
+                            <div class="color-btn" data-color="#0000FF" style="background: #0000FF;" title="Bleu"></div>
+                            <div class="color-btn" data-color="#FFFF00" style="background: #FFFF00;" title="Jaune"></div>
+                            <div class="color-btn" data-color="#FF6600" style="background: #FF6600;" title="Orange"></div>
+                            <div class="color-btn" data-color="#FFFFFF" style="background: #FFFFFF; border: 1px solid #ccc;" title="Blanc"></div>
+                            <div class="color-btn" data-color="#000000" style="background: #000000;" title="Noir"></div>
+                            <input type="color" id="customColorPicker" class="custom-color-picker" title="Couleur personnalisée">
+                        </div>
+                    </div>
+                    
+                    <!-- Contrôles -->
+                    <div class="toolbar-group">
+                        <button class="toolbar-btn" id="undoBtn" title="Annuler">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        <button class="toolbar-btn" id="redoBtn" title="Refaire">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button class="toolbar-btn" id="deleteBtn" title="Supprimer l'élément sélectionné (Suppr)" style="display: none;">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="editor-actions">
+                    <button class="btn btn-secondary" id="cancelEditBtn">
+                        <i class="fas fa-times"></i> Annuler
+                    </button>
+                    <button class="btn btn-primary" id="saveEditBtn">
+                        <i class="fas fa-save"></i> Sauvegarder
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Corps de l'Éditeur -->
+            <div class="modal-body image-editor-body">
+                <!-- Sidebar des Propriétés -->
+                <div class="editor-sidebar">
+                    <div class="sidebar-section">
+                        <h6>Propriétés</h6>
+                        
+                        <!-- Épaisseur du Trait -->
+                        <div class="property-group">
+                            <label>Épaisseur</label>
+                            <div class="stroke-width-control">
+                                <input type="range" id="strokeWidth" min="1" max="20" value="2" class="form-range">
+                                <span id="strokeWidthValue">2px</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Style de Trait -->
+                        <div class="property-group">
+                            <label>Style</label>
+                            <select id="strokeStyle" class="form-select">
+                                <option value="solid">Continu</option>
+                                <option value="dashed">Pointillés</option>
+                                <option value="dotted">Points</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Opacité -->
+                        <div class="property-group">
+                            <label>Opacité</label>
+                            <div class="opacity-control">
+                                <input type="range" id="opacity" min="10" max="100" value="100" class="form-range">
+                                <span id="opacityValue">100%</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Propriétés du Texte -->
+                        <div class="property-group text-properties" style="display: none;">
+                            <label>Police</label>
+                            <select id="fontFamily" class="form-select">
+                                <option value="Arial">Arial</option>
+                                <option value="Helvetica">Helvetica</option>
+                                <option value="Times New Roman">Times New Roman</option>
+                                <option value="Courier New">Courier New</option>
+                            </select>
+                            
+                            <label>Taille</label>
+                            <input type="number" id="fontSize" min="8" max="72" value="16" class="form-control">
+                            
+                            <div class="text-style-controls">
+                                <button class="btn btn-sm" id="boldBtn" title="Gras">
+                                    <i class="fas fa-bold"></i>
+                                </button>
+                                <button class="btn btn-sm" id="italicBtn" title="Italique">
+                                    <i class="fas fa-italic"></i>
+                                </button>
+                                <button class="btn btn-sm" id="underlineBtn" title="Souligné">
+                                    <i class="fas fa-underline"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Calques -->
+                    <div class="sidebar-section">
+                        <h6>Calques</h6>
+                        <div id="layersList" class="layers-list">
+                            <!-- Les calques seront générés dynamiquement -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Zone de Canvas -->
+                <div class="editor-canvas-container">
+                    <div class="canvas-wrapper">
+                        <canvas id="imageEditorCanvas"></canvas>
+                    </div>
+                    
+                    <!-- Zoom Controls -->
+                    <div class="zoom-controls">
+                        <button class="zoom-btn" id="zoomOutBtn" title="Zoom arrière">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <span id="zoomLevel">100%</span>
+                        <button class="zoom-btn" id="zoomInBtn" title="Zoom avant">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button class="zoom-btn" id="fitToScreenBtn" title="Ajuster à l'écran">
+                            <i class="fas fa-expand-arrows-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmation de Sauvegarde -->
+<div class="modal fade" id="saveConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background: var(--dark-blue, #0f172a); border: 1px solid rgba(59, 130, 246, 0.3);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(59, 130, 246, 0.2);">
+                <h5 class="modal-title" style="color: white;">
+                    <i class="fas fa-save me-2"></i>
+                    Sauvegarder l'image éditée
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="color: rgba(255, 255, 255, 0.9);">
+                <p>Comment souhaitez-vous sauvegarder votre image éditée ?</p>
+                <div class="d-grid gap-3">
+                    <button type="button" class="btn" id="replaceOriginalBtn" 
+                            style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.9), rgba(185, 28, 28, 0.9)); 
+                                   border: 1px solid rgba(239, 68, 68, 0.5); color: white;">
+                        <i class="fas fa-refresh me-2"></i>
+                        <strong>Remplacer l'image originale</strong>
+                        <br><small style="opacity: 0.8;">L'image actuelle sera remplacée par la version éditée</small>
+                    </button>
+                    <button type="button" class="btn" id="createNewBtn"
+                            style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(29, 78, 216, 0.9)); 
+                                   border: 1px solid rgba(59, 130, 246, 0.5); color: white;">
+                        <i class="fas fa-plus me-2"></i>
+                        <strong>Créer une nouvelle image</strong>
+                        <br><small style="opacity: 0.8;">Garder l'originale et ajouter la version éditée</small>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid rgba(59, 130, 246, 0.2);">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                        style="background: rgba(107, 114, 128, 0.3); border: 1px solid rgba(107, 114, 128, 0.4);">
+                    Annuler
+                </button>
+            </div>
+        </div>
+    </div>
+</div> 
