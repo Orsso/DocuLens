@@ -54,6 +54,12 @@ Here's a brief overview of planned features and improvements:
 *   **Zoom Management in Section Arranger**: Add zoom controls (zoom in, zoom out, fit to screen) to the section arrangement view for better navigation with a large number of images.
 *   **AI-powered Auto-indexing**: Implement intelligent auto-tagging and indexing of images based on their content.
 
+## ⚠️ Known Issues
+
+*   **Tool selection in editor:** The selection of drawing tools in the image editor can sometimes be unstable.
+*   **Invisible annotations:** Annotations on images may occasionally appear invisible or not render as expected.
+*   **Incorrect display of created images in viewer:** Newly created or modified images might not display correctly in the image previewer/lightbox immediately.
+
 ## 🤝 Contributing
 
 PRs welcome. Keep it simple.

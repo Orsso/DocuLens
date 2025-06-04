@@ -6,7 +6,7 @@
 class ImageEditor {
     constructor() {
         this.canvas = null;
-        this.originalImage = null;
+        this.originalImage = null; // Objet Fabric Image de l'image de fond
         this.currentTool = 'select';
         
         // Propriétés par défaut pour les nouveaux objets et l'UI
@@ -18,9 +18,21 @@ class ImageEditor {
         // Pas besoin de stocker fontWeight, fontStyle, underline ici, 
         // car ils seront lus/appliqués directement depuis/vers l'objet.
 
+        // Propriétés pour le nouveau système de zoom/pan
+        this.currentCanvasScale = 1.0; // Échelle actuelle du canvas HTML et de son contenu
+        this.baseCanvasWidth = 0;      // Largeur "naturelle" (scale 1.0) de l'image chargée
+        this.baseCanvasHeight = 0;     // Hauteur "naturelle" (scale 1.0) de l'image chargée
+        this.canvasWrapper = null;     // Référence au div .canvas-wrapper
+        this.MIN_CANVAS_SCALE = 0.1;   // Échelle minimale autorisée
+        this.MAX_CANVAS_SCALE = 5.0;    // Échelle maximale autorisée
+
         this.history = [];
         this.historyStep = 0;
         this.isDrawing = false;
+        this.startX = 0;
+        this.startY = 0;
+        this.tempObject = null; // Pour le dessin de formes temporaires
+        this.suppressSaveStateForTempObject = false; // Pour optimiser saveState lors du dessin
         this.modal = null;
         this.currentImageData = null;
         this.layerIdCounter = 0; // Pour les ID uniques des calques
@@ -94,18 +106,24 @@ class ImageEditor {
             this.canvas.dispose();
         }
         
-        // Vérifier que Fabric.js est chargé
         if (typeof fabric === 'undefined') {
             await this.loadFabricJS();
+        }
+
+        this.canvasWrapper = document.querySelector('.canvas-wrapper');
+        if (!this.canvasWrapper) {
+            console.error("FATAL: .canvas-wrapper element not found!");
+            this.showError("Erreur critique: Conteneur du canvas manquant.");
+            return;
         }
         
         const canvasElement = document.getElementById('imageEditorCanvas');
         this.canvas = new fabric.Canvas(canvasElement, {
-            width: 800,
-            height: 600,
-            backgroundColor: '#f0f0f0',
+            // Les dimensions initiales seront définies dans loadImage via applyCanvasScaleAndObjects
+            backgroundColor: '#f0f0f0', // Sera probablement masqué par l'image ou le fond du wrapper
             selection: true,
-            preserveObjectStacking: true
+            preserveObjectStacking: true,
+            zoom: 1 // Le zoom interne de Fabric.js reste à 1
         });
         
         // Événements du canvas
@@ -120,10 +138,20 @@ class ImageEditor {
             if (e.target && !e.target.id) {
                 e.target.id = `layer_${this.layerIdCounter++}`;
             }
+            // Optimisation: Ne pas sauvegarder l'état pour les objets temporaires pendant le dessin
+            if (this.suppressSaveStateForTempObject && e.target === this.tempObject) {
+                this.renderLayersUI(); // Mettre à jour la liste des calques pour le retour visuel
+                return;
+            }
             this.saveState();
             this.renderLayersUI(); 
         });
         this.canvas.on('object:removed', (e) => {
+            // Optimisation: Ne pas sauvegarder l'état pour les objets temporaires pendant le dessin
+            if (this.suppressSaveStateForTempObject && e.target === this.tempObject) {
+                this.renderLayersUI(); // Mettre à jour la liste des calques pour le retour visuel
+                return;
+            }
             this.saveState();
             this.renderLayersUI(); 
         });
@@ -185,72 +213,65 @@ class ImageEditor {
      */
     async loadImage(filename) {
         return new Promise((resolve, reject) => {
-            // Pour les tests, créer un canvas vide si pas d'image
             if (filename === 'test.jpg') {
-                // Dimensionner le canvas pour les tests
-                const containerWidth = document.querySelector('.canvas-wrapper').clientWidth - 40;
-                const containerHeight = document.querySelector('.canvas-wrapper').clientHeight - 40;
-                
-                this.canvas.setWidth(Math.min(800, containerWidth));
-                this.canvas.setHeight(Math.min(600, containerHeight));
+                // Cas de test simplifié (pourrait aussi utiliser la nouvelle logique)
+                this.baseCanvasWidth = 800;
+                this.baseCanvasHeight = 600;
+                this.currentCanvasScale = 1.0;
+                this.originalImage = null; // Pas d'image de fond réelle pour le test
+                this.applyCanvasScaleAndObjects(1.0); // Appliquer l'échelle initiale
                 this.canvas.backgroundColor = '#ffffff';
-                
-                // Mettre à jour le nom de l'image
                 document.getElementById('editorImageName').textContent = `- ${filename}`;
-                
-                // Mettre à jour l'affichage du zoom initial
                 this.updateZoomDisplay();
-                
                 resolve();
                 return;
             }
             
-            // Ajouter un timestamp pour forcer le rechargement et éviter le cache
             const imagePath = `/image/${appState.documentName}/${filename}?t=${Date.now()}`;
-            console.log(`[ImageEditor] Loading image for Fabric: ${imagePath}`); // Log pour vérifier
             
             fabric.Image.fromURL(imagePath, (img) => {
                 if (!img) {
-                    reject(new Error('Impossible de charger l\'image'));
+                    reject(new Error(`Impossible de charger l'image: ${imagePath}`));
                     return;
                 }
                 
-                this.originalImage = img;
-                
-                // Calculer les dimensions pour s'adapter au canvas
-                const containerWidth = document.querySelector('.canvas-wrapper').clientWidth - 40;
-                const containerHeight = document.querySelector('.canvas-wrapper').clientHeight - 40;
-                
-                const scale = Math.min(
-                    containerWidth / img.width,
-                    containerHeight / img.height,
-                    1 // Ne pas agrandir l'image
-                );
-                
-                // Redimensionner le canvas
-                this.canvas.setWidth(img.width * scale);
-                this.canvas.setHeight(img.height * scale);
-                
-                // Configurer l'image de fond
-                img.set({
-                    left: 0,
-                    top: 0,
-                    scaleX: scale,
-                    scaleY: scale,
-                    selectable: false,
-                    evented: false
+                this.originalImage = img; // Stocker l'objet image Fabric
+                this.originalImage.set({
+                    selectable: false, // L'image de fond n'est pas sélectionnable
+                    evented: false,    // Ni source d'événements
+                    originX: 'left',
+                    originY: 'top'
                 });
+
+                this.baseCanvasWidth = img.width;  // Dimensions natives de l'image
+                this.baseCanvasHeight = img.height;
+
+                // Calculer l'échelle initiale pour adapter l'image au conteneur sans l'agrandir
+                const PADDING = 10; // Un peu de marge dans le wrapper
+                const availableWidth = this.canvasWrapper.clientWidth - PADDING;
+                const availableHeight = this.canvasWrapper.clientHeight - PADDING;
                 
-                this.canvas.setBackgroundImage(img, this.canvas.renderAll.bind(this.canvas));
+                const fitScale = Math.min(
+                    availableWidth / this.baseCanvasWidth,
+                    availableHeight / this.baseCanvasHeight,
+                    1.0 // Ne pas agrandir l'image au-delà de sa taille native pour l'adapter initialement
+                );
+                this.currentCanvasScale = fitScale;
                 
-                // Mettre à jour le nom de l'image
+                this.canvas.setZoom(1); // S'assurer que le zoom interne de Fabric est à 1
+
+                // Appliquer l'échelle et charger l'image de fond
+                this.applyCanvasScaleAndObjects(1.0); // oldScale est 1.0 car c'est la première mise à l'échelle
+
                 document.getElementById('editorImageName').textContent = `- ${filename}`;
+                this.updateZoomDisplay(); // Met à jour l'UI avec this.currentCanvasScale
                 
-                // Mettre à jour l'affichage du zoom initial
-                this.updateZoomDisplay();
+                this.saveState(); // Sauvegarder l'état initial
+                this.renderLayersUI();
+                this.updatePropertiesFromActiveObject();
                 
                 resolve();
-            });
+            }, { crossOrigin: 'anonymous' }); // Pour éviter les problèmes de tainted canvas si l'image vient d'un autre domaine
         });
     }
     
@@ -260,64 +281,73 @@ class ImageEditor {
     onMouseDown(e) {
         const pointer = this.canvas.getPointer(e.e);
         
-        // Vérifier si Ctrl est pressé pour le panning
+        // Nouvelle logique de panning via scroll du wrapper
         if (e.e.ctrlKey || e.e.metaKey) {
             this.isPanning = true;
             this.lastPanPoint = { x: e.e.clientX, y: e.e.clientY };
-            this.canvas.defaultCursor = 'grab';
-            this.canvas.hoverCursor = 'grab';
-            return;
+            this.initialScroll = { 
+                left: this.canvasWrapper.scrollLeft, 
+                top: this.canvasWrapper.scrollTop 
+            };
+            this.canvasWrapper.style.cursor = 'grabbing'; // Appliquer directement au wrapper
+            this.canvas.defaultCursor = 'grabbing'; // Pour que Fabric n'override pas
+            this.canvas.hoverCursor = 'grabbing';
+            return; // Ne pas laisser Fabric gérer la sélection/dessin
         }
         
         // Si on utilise l'outil de sélection, laisser Fabric.js gérer
         if (this.currentTool === 'select') return;
         
-        // Si on clique sur un objet existant, ne pas créer de nouveau élément
-        if (e.target && e.target !== this.canvas) {
+        // Si on clique sur un objet existant avec un outil de dessin, ne pas créer de nouveau élément
+        if (e.target && e.target !== this.canvas && this.currentTool !== 'pen') { 
+            // Sauf pour le stylo, où on peut dessiner par-dessus
             return;
         }
         
         this.isDrawing = true;
-        this.startX = pointer.x;
+        this.startX = pointer.x; // Coordonnées relatives au canevas Fabric
         this.startY = pointer.y;
+        this.tempObject = null; // Réinitialiser pour les outils de forme
         
         switch (this.currentTool) {
+            case 'rectangle':
+            case 'circle':
+            case 'arrow':
+            case 'line':
+                this.suppressSaveStateForTempObject = true;
+                break;
             case 'pen':
                 this.startFreeDrawing();
                 break;
             case 'text':
+                // Convertir les coordonnées du pointeur (relatives au canevas mis à l'échelle)
+                // en coordonnées de base si nécessaire, ou simplement les utiliser telles quelles.
+                // Pour l'instant, on les utilise telles quelles, car les objets sont mis à l'échelle globalement.
                 this.addText(pointer.x, pointer.y);
                 break;
         }
     }
     
     onMouseMove(e) {
-        // Gestion du panning avec Ctrl
+        // Nouvelle logique de panning via scroll du wrapper
         if (this.isPanning && this.lastPanPoint) {
-            const currentPoint = { x: e.e.clientX, y: e.e.clientY };
-            const deltaX = currentPoint.x - this.lastPanPoint.x;
-            const deltaY = currentPoint.y - this.lastPanPoint.y;
+            const currentMousePoint = { x: e.e.clientX, y: e.e.clientY };
+            const deltaX = currentMousePoint.x - this.lastPanPoint.x;
+            const deltaY = currentMousePoint.y - this.lastPanPoint.y;
             
-            // Déplacer la vue du canvas
-            const vpt = this.canvas.viewportTransform;
-            vpt[4] += deltaX;
-            vpt[5] += deltaY;
-            
-            this.canvas.setViewportTransform(vpt);
-            this.lastPanPoint = currentPoint;
-            return;
+            this.canvasWrapper.scrollLeft = this.initialScroll.left - deltaX;
+            this.canvasWrapper.scrollTop = this.initialScroll.top - deltaY;
+            return; // Ne pas laisser Fabric gérer autre chose
         }
         
         if (!this.isDrawing || this.currentTool === 'select' || this.currentTool === 'pen' || this.currentTool === 'text') return;
         
         const pointer = this.canvas.getPointer(e.e);
         
-        // Supprimer l'objet temporaire précédent
         if (this.tempObject) {
             this.canvas.remove(this.tempObject);
         }
         
-        // Créer un nouvel objet temporaire
         this.tempObject = this.createShape(this.startX, this.startY, pointer.x, pointer.y);
         if (this.tempObject) {
             this.canvas.add(this.tempObject);
@@ -326,26 +356,41 @@ class ImageEditor {
     }
     
     onMouseUp(e) {
-        // Arrêter le panning
+        // Nouvelle logique de panning via scroll du wrapper
         if (this.isPanning) {
             this.isPanning = false;
             this.lastPanPoint = null;
-            this.canvas.defaultCursor = this.tools[this.currentTool].cursor;
-            this.canvas.hoverCursor = this.tools[this.currentTool].cursor;
-            return;
+            this.initialScroll = null;
+            this.canvasWrapper.style.cursor = 'auto'; // ou 'default'
+            this.canvas.defaultCursor = this.tools[this.currentTool]?.cursor || 'default';
+            this.canvas.hoverCursor = this.tools[this.currentTool]?.cursor || 'default';
+            return; // Ne pas laisser Fabric gérer autre chose si on pannait
         }
         
         if (!this.isDrawing) return;
+        this.isDrawing = false; // Important de le mettre à false ici
         
-        this.isDrawing = false;
-        
+        switch (this.currentTool) {
+            case 'rectangle':
+            case 'circle':
+            case 'arrow':
+            case 'line':
+                this.suppressSaveStateForTempObject = false; // Réactiver saveState
         if (this.tempObject) {
-            // L'objet temporaire devient permanent
-            this.tempObject = null;
-        }
-        
-        if (this.currentTool === 'pen') {
-            this.stopFreeDrawing();
+                    this.tempObject.setCoords(); // Finaliser les coordonnées
+                    // L'objet est déjà sur le canvas depuis le dernier onMouseMove
+                    this.saveState(); // Sauvegarder l'état final
+                    this.renderLayersUI(); // Mettre à jour l'UI des calques
+                    this.canvas.setActiveObject(this.tempObject); // Rendre l'objet actif
+                    this.canvas.fire('object:modified', { target: this.tempObject }); // Pour màj UI propriétés
+                    this.tempObject = null; // Nettoyer
+                }
+                break;
+            case 'pen':
+                this.stopFreeDrawing(); // Gère son propre saveState via path:created
+                break;
+            // case 'text': // Géré par object:added après addText
+            //     break;
         }
     }
     
@@ -460,8 +505,8 @@ class ImageEditor {
         if (!layerItem) {
             if (typeof logError === 'function') logError('❌ Élément de calque non trouvé pour édition:', textObj.id);
             return;
-        }
-
+                }
+                
         const textDisplay = layerItem.querySelector('.layer-text-content');
         const currentText = textObj.text;
 
@@ -676,44 +721,35 @@ class ImageEditor {
      */
     handleMouseWheel(opt) {
         const e = opt.e;
-        
-        // Zoom seulement si Shift est pressé
-        if (e.shiftKey) {
+        if (e.shiftKey) { // Zoom seulement si Shift est pressé
             e.preventDefault();
             e.stopPropagation();
             
+            const oldScale = this.currentCanvasScale;
             const delta = e.deltaY;
-            let zoom = this.canvas.getZoom();
             
-            zoom *= 0.999 ** delta;
+            // Ajuster la sensibilité du zoom à la molette
+            const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out si delta > 0, zoom in sinon
+            let newScale = oldScale * zoomFactor;
             
-            // Calculer le zoom minimum basé sur la taille de l'image et du conteneur
-            const minZoom = this.calculateMinZoom();
-            
-            // Limiter le zoom entre le minimum calculé et 5x
-            zoom = Math.min(Math.max(zoom, minZoom), 5);
-            
-            // Zoomer vers le centre de l'image pour éviter qu'elle sorte du cadre
-            const centerX = this.canvas.width / 2;
-            const centerY = this.canvas.height / 2;
-            this.canvas.zoomToPoint({x: centerX, y: centerY}, zoom);
-            
-            // Mettre à jour l'affichage du niveau de zoom
-            this.updateZoomDisplay();
-            
-            opt.e.preventDefault();
-            opt.e.stopPropagation();
+            // Limiter l'échelle
+            this.currentCanvasScale = Math.min(Math.max(newScale, this.MIN_CANVAS_SCALE), this.MAX_CANVAS_SCALE);
+
+            if (typeof logInfo === 'function') {
+                logInfo(`[ZOOM WHEEL] Old: ${oldScale.toFixed(2)}, Delta: ${delta}, New Attempt: ${newScale.toFixed(2)}, Final: ${this.currentCanvasScale.toFixed(2)}`);
+            }
+
+            if (oldScale !== this.currentCanvasScale) {
+                this.applyCanvasScaleAndObjects(oldScale);
+            }
+            // updateZoomDisplay est appelé à la fin de applyCanvasScaleAndObjects
         }
     }
     
-    /**
-     * Met à jour l'affichage du niveau de zoom
-     */
     updateZoomDisplay() {
-        const zoom = this.canvas.getZoom();
-        const zoomLevel = document.getElementById('zoomLevel');
-        if (zoomLevel) {
-            zoomLevel.textContent = `${Math.round(zoom * 100)}%`;
+        const zoomLevelElement = document.getElementById('zoomLevel');
+        if (zoomLevelElement) {
+            zoomLevelElement.textContent = `${Math.round(this.currentCanvasScale * 100)}%`;
         }
     }
     
@@ -743,59 +779,54 @@ class ImageEditor {
                 return;
             }
             
-            // Vérifier si l'élément actif est un champ de saisie (pour l'édition des calques)
             const activeElement = document.activeElement;
             const isEditingInLayerInput = activeElement && 
                                           (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
-                                          activeElement.closest('.layers-list'); // S'assurer que c'est bien dans notre liste de calques
+                                          activeElement.closest('.layers-list'); 
             
             if (typeof logInfo === 'function') {
                 logInfo('⌨️ Touche:', e.key, 'Édition dans input calque:', isEditingInLayerInput);
             }
-
-            // Si l'utilisateur est en train de taper dans un champ d'édition de calque, ne rien faire.
+            
             if (isEditingInLayerInput) {
-                // Laisser l'input gérer l'événement, sauf pour Échap qui pourrait annuler globalement l'édition de l'input.
-                // Cependant, la logique d'Escape est déjà dans l'event listener de l'input dans editTextObject.
                 return;
             }
             
-            // Si on n'édite pas de texte dans un input de calque, traiter les raccourcis de l'éditeur.
             switch(e.key) {
                 case 'Delete':
                 case 'Backspace':
                     e.preventDefault();
-                    this.deleteSelectedObject(); // Appellera renderLayersUI via object:removed
+                    this.deleteSelectedObject();
                     break;
                 case 'Escape':
                     this.canvas.discardActiveObject();
                     this.canvas.renderAll();
-                    this.renderLayersUI(); // Mettre à jour la surbrillance dans les calques
+                    this.renderLayersUI(); 
                     break;
-                case 'Control':
-                case 'Meta':
-                    if (this.canvas.getZoom() > this.calculateMinZoom()) {
-                        this.canvas.defaultCursor = 'grab';
-                        this.canvas.hoverCursor = 'grab';
-                    }
-                    break;
+                // La gestion du curseur pour Ctrl/Meta pendant le keydown est supprimée,
+                // car elle est maintenant gérée directement dans onMouseDown/onMouseUp pour le panning du wrapper.
+                // case 'Control':
+                // case 'Meta': 
+                //     break;
             }
         });
-        
+
         document.addEventListener('keyup', (e) => {
             if (!this.modal || !document.getElementById('imageEditorModal').classList.contains('show')) {
                 return;
             }
-            // Si l'édition se fait dans un input, ne pas interférer avec le curseur
             const activeElement = document.activeElement;
             if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') && activeElement.closest('.layers-list')) {
                 return;
             }
-            
-            if (e.key === 'Control' || e.key === 'Meta') {
-                this.canvas.defaultCursor = this.tools[this.currentTool].cursor;
-                this.canvas.hoverCursor = this.tools[this.currentTool].cursor;
-            }
+
+            // Le relâchement de Ctrl/Meta ne doit plus restaurer le curseur du canvas Fabric
+            // car le panoramique change le curseur du wrapper et le restaure à la fin du pan.
+            // Si d'autres outils modifient le curseur du canvas Fabric, ils doivent le restaurer eux-mêmes.
+            // if (e.key === 'Control' || e.key === 'Meta') {
+            //     this.canvas.defaultCursor = this.tools[this.currentTool]?.cursor || 'default';
+            //     this.canvas.hoverCursor = this.tools[this.currentTool]?.cursor || 'default';
+            // }
         });
     }
     
@@ -803,59 +834,54 @@ class ImageEditor {
      * Zoom in
      */
     zoomIn() {
-        let zoom = this.canvas.getZoom();
-        zoom = Math.min(zoom * 1.2, 5);
-        this.canvas.setZoom(zoom);
-        this.updateZoomDisplay();
+        const oldScale = this.currentCanvasScale;
+        let newScale = this.currentCanvasScale * 1.2;
+        this.currentCanvasScale = Math.min(newScale, this.MAX_CANVAS_SCALE);
+        
+        if (oldScale !== this.currentCanvasScale) {
+            this.applyCanvasScaleAndObjects(oldScale);
+        }
     }
     
     /**
      * Zoom out
      */
     zoomOut() {
-        let zoom = this.canvas.getZoom();
-        const minZoom = this.calculateMinZoom();
-        zoom = Math.max(zoom / 1.2, minZoom);
-        this.canvas.setZoom(zoom);
-        this.updateZoomDisplay();
-    }
-    
-    /**
-     * Calcule le zoom minimum pour ne pas dépasser la taille originale de l'image
-     */
-    calculateMinZoom() {
-        if (!this.originalImage) {
-            return 0.1; // Valeur par défaut si pas d'image
+        const oldScale = this.currentCanvasScale;
+        let newScale = this.currentCanvasScale / 1.2;
+        this.currentCanvasScale = Math.max(newScale, this.MIN_CANVAS_SCALE);
+
+        if (oldScale !== this.currentCanvasScale) {
+            this.applyCanvasScaleAndObjects(oldScale);
         }
-        
-        const containerWidth = document.querySelector('.canvas-wrapper').clientWidth - 40;
-        const containerHeight = document.querySelector('.canvas-wrapper').clientHeight - 40;
-        
-        // Calculer le zoom qui fait tenir l'image dans le conteneur
-        const scaleX = containerWidth / this.originalImage.width;
-        const scaleY = containerHeight / this.originalImage.height;
-        const fitScale = Math.min(scaleX, scaleY);
-        
-        // Le zoom minimum est soit le zoom "fit", soit 1.0 (taille originale), selon ce qui est le plus petit
-        return Math.min(fitScale, 1.0);
     }
     
     /**
      * Ajuster à l'écran
      */
     fitToScreen() {
-        if (this.originalImage) {
-            const containerWidth = document.querySelector('.canvas-wrapper').clientWidth - 40;
-            const containerHeight = document.querySelector('.canvas-wrapper').clientHeight - 40;
+        if (!this.baseCanvasWidth || !this.baseCanvasHeight) return; // Image pas encore chargée
+
+        const PADDING = 10;
+        const availableWidth = this.canvasWrapper.clientWidth - PADDING;
+        const availableHeight = this.canvasWrapper.clientHeight - PADDING;
             
-            const scaleX = containerWidth / this.originalImage.width;
-            const scaleY = containerHeight / this.originalImage.height;
-            const scale = Math.min(scaleX, scaleY, 1);
+        const scaleToFitWidth = availableWidth / this.baseCanvasWidth;
+        const scaleToFitHeight = availableHeight / this.baseCanvasHeight;
+        
+        // On prend la plus petite échelle pour que tout rentre, sans dépasser 100% de la taille native de l'image initialement
+        // Mais si l'utilisateur veut "fitToScreen" après avoir zoomé, on peut autoriser un scale > 1 si l'image est petite
+        const targetScale = Math.min(scaleToFitWidth, scaleToFitHeight);
             
-            this.canvas.setZoom(scale);
-            this.canvas.setWidth(this.originalImage.width * scale);
-            this.canvas.setHeight(this.originalImage.height * scale);
-            this.updateZoomDisplay();
+        const oldScale = this.currentCanvasScale;
+        this.currentCanvasScale = Math.min(Math.max(targetScale, this.MIN_CANVAS_SCALE), this.MAX_CANVAS_SCALE);
+        
+        if (typeof logInfo === 'function') {
+            logInfo(`[FIT TO SCREEN] Base: ${this.baseCanvasWidth}x${this.baseCanvasHeight}, Available: ${availableWidth}x${availableHeight}, TargetFitScale: ${targetScale.toFixed(2)}, Final CurrentScale: ${this.currentCanvasScale.toFixed(2)}`);
+        }
+
+        if (oldScale !== this.currentCanvasScale) {
+            this.applyCanvasScaleAndObjects(oldScale);
         }
     }
     
@@ -871,15 +897,44 @@ class ImageEditor {
      * Sauvegarde l'image éditée
      */
     async saveImage(replaceOriginal = false) {
+        if (!this.canvas) {
+            this.showError('Le canvas n\'est pas initialisé.');
+            return;
+        }
+
         try {
+            const originalFilename = this.currentImageData.filename;
+            let outputFormat = 'png';
+            let quality = undefined; 
+
+            const lowerCaseFilename = originalFilename.toLowerCase();
+            if (lowerCaseFilename.endsWith('.jpg') || lowerCaseFilename.endsWith('.jpeg')) {
+                outputFormat = 'jpeg';
+                quality = 0.9;
+            }
+
+            let filenameToSave;
+            let newExtension = `.${outputFormat}`;
+
+            if (replaceOriginal) {
+                const base = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
+                filenameToSave = base + newExtension;
+            } else {
+                const base = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
+                const timestamp = new Date().getTime();
+                filenameToSave = `${base}_annotated_${timestamp}${newExtension}`;
+            }
+
+            // Calculer le multiplicateur pour exporter à la taille de base de l'image
+            const exportMultiplier = this.baseCanvasWidth > 0 ? (this.baseCanvasWidth / (this.baseCanvasWidth * this.currentCanvasScale)) : 1;
             if (typeof logInfo === 'function') {
-                logInfo('🚀 Début de la sauvegarde...');
+                logInfo(`[SAVE IMG] Current scale: ${this.currentCanvasScale}, BaseWidth: ${this.baseCanvasWidth}, CanvasElementWidth: ${this.canvas.getElement().width}, Export multiplier: ${exportMultiplier}`);
             }
             
-            // Générer l'image
             const dataURL = this.canvas.toDataURL({
-                format: 'png',
-                quality: 1.0
+                format: outputFormat,
+                quality: quality,
+                multiplier: exportMultiplier
             });
             
             if (typeof logInfo === 'function') {
@@ -1136,7 +1191,15 @@ class ImageEditor {
                 const newSrc = `/image/${documentName}/${newFilename}?t=${Date.now()}`;
                 imgElement.src = newSrc;
                 imgElement.alt = newFilename;
-                console.debug(`[DIAGNOSTIC] Image src mise à jour: ${newSrc}`);
+                // Assurer que le double-clic sur l'image utilise le nouveau nom de fichier
+                imgElement.ondblclick = (event) => {
+                    if (typeof showImagePreview === 'function') {
+                        showImagePreview(newFilename, event);
+                    } else {
+                        console.warn('showImagePreview function not found for dblclick');
+                    }
+                };
+                console.debug(`[DIAGNOSTIC] Image src et dblclick mis à jour: ${newSrc}`);
             }
             
             // Mettre à jour tous les boutons d'action avec les bons paramètres
@@ -1454,7 +1517,15 @@ class ImageEditor {
             const newImageSrc = `${baseSrc}${newFilename}?t=${Date.now()}`;
             imgElement.src = newImageSrc;
             imgElement.alt = newFilename;
-            console.log(`[ImageEditor] updateImageInDOM: img.src mis à jour à ${newImageSrc} (depuis ${oldImageSrc})`);
+            // Assurer que le double-clic sur l'image utilise le nouveau nom de fichier
+            imgElement.ondblclick = (event) => {
+                if (typeof showImagePreview === 'function') {
+                    showImagePreview(newFilename, event);
+                } else {
+                    console.warn('showImagePreview function not found for dblclick');
+                }
+            };
+            console.log(`[ImageEditor] updateImageInDOM: src de l'image et dblclick mis à jour vers ${newImageSrc}`);
 
             // 3. Mettre à jour l'attribut onclick de la carte pour la sélection
             imageCard.setAttribute('onclick', `toggleImageSelectionByClick('${newFilename}')`);
@@ -2034,6 +2105,57 @@ class ImageEditor {
             textPropertiesPanel.style.display = 'none';
              if (strokeWidthGroup) strokeWidthGroup.style.display = 'block'; // Assurer que l'épaisseur est visible pour les formes
         }
+    }
+
+    // Nouvelle fonction centrale pour appliquer le zoom/échelle
+    applyCanvasScaleAndObjects(oldCanvasScale) {
+        if (typeof logInfo === 'function') {
+            logInfo(`[SCALE] Applying. Base: ${this.baseCanvasWidth}x${this.baseCanvasHeight}, OldS: ${oldCanvasScale}, NewS: ${this.currentCanvasScale}`);
+        }
+
+        const newCanvasWidth = this.baseCanvasWidth * this.currentCanvasScale;
+        const newCanvasHeight = this.baseCanvasHeight * this.currentCanvasScale;
+
+        this.canvas.setWidth(newCanvasWidth);
+        this.canvas.setHeight(newCanvasHeight);
+
+        // L'élément HTML canvas est aussi redimensionné par setWidth/setHeight de Fabric.
+
+        const scaleFactor = this.currentCanvasScale / oldCanvasScale;
+
+        // Mettre à l'échelle l'image de fond
+        if (this.originalImage) {
+            this.originalImage.scaleX = this.currentCanvasScale; 
+            this.originalImage.scaleY = this.currentCanvasScale;
+            // Position reste 0,0 car originX/Y sont left/top
+            this.canvas.setBackgroundImage(this.originalImage, this.canvas.renderAll.bind(this.canvas), {
+                scaleX: this.currentCanvasScale,
+                scaleY: this.currentCanvasScale,
+                originX: 'left',
+                originY: 'top'
+            });
+        } else {
+            // S'il n'y a pas d'image de fond, s'assurer que le canevas est rendu vierge
+             this.canvas.setBackgroundImage(null, this.canvas.renderAll.bind(this.canvas));
+        }
+
+        // Mettre à l'échelle tous les autres objets
+        const objects = this.canvas.getObjects();
+        objects.forEach(obj => {
+            // Les coordonnées et échelles des objets sont relatives au canevas Fabric,
+            // dont la "taille" logique ne change pas, mais dont le contenu est rendu à une échelle différente.
+            // Ici, nous mettons directement à l'échelle les propriétés des objets.
+            obj.left *= scaleFactor;
+            obj.top *= scaleFactor;
+            obj.scaleX *= scaleFactor;
+            obj.scaleY *= scaleFactor;
+            
+            // Recalculer les contrôles pour que leur taille reste constante visuellement
+            obj.setCoords(); 
+        });
+
+        this.canvas.renderAll();
+        this.updateZoomDisplay();
     }
 }
 

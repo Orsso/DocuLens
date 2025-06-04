@@ -938,19 +938,29 @@
              });
          }
 
+        function getAllDescendantSections(parentId, allSections) {
+            let descendants = [];
+            const children = allSections.filter(s => s.parentId === parentId);
+            for (const child of children) {
+                descendants.push(child);
+                descendants = descendants.concat(getAllDescendantSections(child.id, allSections));
+            }
+            return descendants;
+        }
+
         function deleteSection(sectionId) {
             const sectionIndex = appState.sections.findIndex(s => s.id === sectionId);
             if (sectionIndex !== -1) {
                 const sectionToDelete = appState.sections[sectionIndex];
                 
                 if (sectionToDelete.level === 1) {
-                    // Section principale : supprimer aussi toutes les sous-sections
-                    const subsections = appState.sections.filter(s => s.parentId === sectionId);
-                    const sectionsToDelete = [sectionToDelete, ...subsections];
+                    // Section principale : supprimer aussi toutes les sous-sections et leurs descendants
+                    const descendants = getAllDescendantSections(sectionId, appState.sections);
+                    const sectionsToDelete = [sectionToDelete, ...descendants];
                 
                     // Collecter toutes les images à animer vers unassigned
                     const imagesToAnimate = [];
-                sectionsToDelete.forEach(section => {
+                    sectionsToDelete.forEach(section => {
                         imagesToAnimate.push(...section.images.map(img => img.filename));
                         console.log(`📤 Images de la section ${section.sectionNumber || section.number} préparées pour animation vers non-assignées (${section.images.length} images)`);
                     });

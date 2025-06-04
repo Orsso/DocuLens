@@ -494,12 +494,6 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
                     pix = fitz.Pixmap(pdf_document, xref)
                     print(f"  📷 Image {img_index+1} extraite (méthode directe)")
                     
-                    # Si l'image est trop petite, c'est probablement un artefact
-                    if pix.width < 50 or pix.height < 50:
-                        print(f"  ⚠️  Image {img_index+1} trop petite ({pix.width}x{pix.height}), ignorée")
-                        pix = None
-                        continue
-                        
                 except Exception as e:
                     # En cas d'erreur, ignorer cette image
                     print(f"  ❌ Erreur extraction image {img_index+1}: {str(e)}")
@@ -552,24 +546,35 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
         filtered_images = all_images_data
         print(f"🔍 Filtrage désactivé - {len(filtered_images)} images conservées")
     
+    # Pré-compter le nombre d'images par section après filtrage
+    images_per_section_final_count = defaultdict(int)
+    for _, metadata in filtered_images:
+        images_per_section_final_count[metadata['section']['number']] += 1
+
     # Deuxième passe : sauvegarder les images filtrées
     extracted_files = []
-    section_image_counts = {}
+    section_image_counts = {} # Compteur pour la numérotation si plusieurs images/section
     
     for image_data, metadata in filtered_images:
         current_section = metadata['section']
         section_number = current_section['number']
         
-        # Initialiser le compteur d'images pour cette section
+        # Initialiser le compteur d'images pour cette section (pour la numérotation n_X)
         if section_number not in section_image_counts:
             section_image_counts[section_number] = 0
         
-        # Incrémenter le compteur d'images pour cette section
+        # Incrémenter le compteur d'images pour la numérotation n_X
         section_image_counts[section_number] += 1
-        image_number = section_image_counts[section_number]
+        image_number_in_section = section_image_counts[section_number] # Numéro courant si >1 image
         
-        # Créer le nom de fichier selon la nomenclature
-        filename = f"CRL-{clean_filename}-{section_number} n_{image_number}.jpg"
+        # Créer le nom de fichier selon la nouvelle logique
+        if images_per_section_final_count[section_number] > 1:
+            # S'il y a plusieurs images dans cette section, ajouter n_X
+            filename = f"CRL-{clean_filename}-{section_number} n_{image_number_in_section}.jpg"
+        else:
+            # Une seule image dans cette section, pas de n_X
+            filename = f"CRL-{clean_filename}-{section_number}.jpg"
+            
         filepath = os.path.join(output_folder, filename)
         
         # Sauvegarder l'image en JPEG
@@ -584,7 +589,7 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
             'section': section_number,
             'section_title': current_section['title'],
             'page': metadata['page'],
-            'image_number': image_number
+            'image_number': image_number_in_section if images_per_section_final_count[section_number] > 1 else 1 # ou None si on préfère
         })
     
     pdf_document.close()
