@@ -12,6 +12,7 @@ from PIL import Image
 import numpy as np
 import hashlib
 from collections import defaultdict
+from ai_indexing import get_indexer, test_api_connection
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'votre_cle_secrete_ici'
@@ -905,6 +906,187 @@ def save_edited_image():
     except Exception as e:
         print(f"Erreur lors de la sauvegarde de l'image éditée: {e}")
         return jsonify({'error': 'Erreur lors de la sauvegarde'}), 500
+
+@app.route('/api/ai-indexing/status')
+def ai_indexing_status():
+    """Vérifie le statut du service d'indexation IA"""
+    try:
+        indexer = get_indexer()
+        is_available = indexer.is_available()
+        
+        if is_available:
+            # Test de connexion optionnel (peut être lent)
+            connection_ok = test_api_connection()
+            return jsonify({
+                'available': True,
+                'connection': connection_ok,
+                'message': 'Service d\'indexation IA disponible' if connection_ok else 'Clé API configurée mais connexion échouée'
+            })
+        else:
+            return jsonify({
+                'available': False,
+                'connection': False,
+                'message': 'Clé API Mistral non configurée. Définissez la variable d\'environnement MISTRAL_API_KEY.'
+            })
+    except Exception as e:
+        return jsonify({
+            'available': False,
+            'connection': False,
+            'message': f'Erreur lors de la vérification: {str(e)}'
+        }), 500
+
+@app.route('/api/ai-indexing/analyze', methods=['POST'])
+def ai_indexing_analyze():
+    """Analyse une ou plusieurs images via IA"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'images' not in data or 'document_name' not in data:
+            return jsonify({'error': 'Données manquantes'}), 400
+        
+        images = data['images']
+        document_name = data['document_name']
+        
+        # Initialiser le service d'indexation
+        indexer = get_indexer()
+        
+        if not indexer.is_available():
+            return jsonify({
+                'error': 'Service d\'indexation IA non disponible. Vérifiez votre clé API Mistral.'
+            }), 503
+        
+        results = []
+        document_folder = os.path.join(app.config['OUTPUT_FOLDER'], document_name)
+        
+        for image_filename in images:
+            image_path = os.path.join(document_folder, image_filename)
+            
+            if not os.path.exists(image_path):
+                results.append({
+                    'filename': image_filename,
+                    'success': False,
+                    'error': 'Image non trouvée'
+                })
+                continue
+            
+            # Analyser l'image
+            analysis = indexer.analyze_image(image_path)
+            
+            if analysis:
+                results.append({
+                    'filename': image_filename,
+                    'success': True,
+                    'title': analysis['title'],
+                    'tags': analysis['tags'],
+                    'suggested_filename': generate_new_filename(image_filename, analysis['title'])
+                })
+            else:
+                results.append({
+                    'filename': image_filename,
+                    'success': False,
+                    'error': 'Échec de l\'analyse par IA'
+                })
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'total_processed': len(images),
+            'successful': len([r for r in results if r['success']])
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors de l\'analyse: {str(e)}'}), 500
+
+@app.route('/api/ai-indexing/rename', methods=['POST'])
+def ai_indexing_rename():
+    """Renomme les images selon les suggestions de l'IA"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'renames' not in data or 'document_name' not in data:
+            return jsonify({'error': 'Données manquantes'}), 400
+        
+        renames = data['renames']
+        document_name = data['document_name']
+        document_folder = os.path.join(app.config['OUTPUT_FOLDER'], document_name)
+        
+        results = []
+        
+        for rename_data in renames:
+            old_filename = rename_data['old_filename']
+            new_filename = rename_data['new_filename']
+            
+            old_path = os.path.join(document_folder, old_filename)
+            new_path = os.path.join(document_folder, new_filename)
+            
+            if not os.path.exists(old_path):
+                results.append({
+                    'old_filename': old_filename,
+                    'new_filename': new_filename,
+                    'success': False,
+                    'error': 'Fichier source non trouvé'
+                })
+                continue
+            
+            if os.path.exists(new_path):
+                results.append({
+                    'old_filename': old_filename,
+                    'new_filename': new_filename,
+                    'success': False,
+                    'error': 'Le fichier de destination existe déjà'
+                })
+                continue
+            
+            try:
+                os.rename(old_path, new_path)
+                results.append({
+                    'old_filename': old_filename,
+                    'new_filename': new_filename,
+                    'success': True
+                })
+            except Exception as e:
+                results.append({
+                    'old_filename': old_filename,
+                    'new_filename': new_filename,
+                    'success': False,
+                    'error': f'Erreur de renommage: {str(e)}'
+                })
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'total_processed': len(renames),
+            'successful': len([r for r in results if r['success']])
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Erreur lors du renommage: {str(e)}'}), 500
+
+def generate_new_filename(original_filename, title):
+    """
+    Génère un nouveau nom de fichier basé sur le titre généré par l'IA
+    Remplace la partie 'n_Y' par le titre en 2 mots
+    """
+    try:
+        # Exemple: CRL-DOC-1 n_5.jpg -> CRL-DOC-1 graphique courbes.jpg
+        parts = original_filename.split(' n_')
+        if len(parts) == 2:
+            prefix = parts[0]  # "CRL-DOC-1"
+            extension = parts[1].split('.')[-1]  # "jpg"
+            
+            # Nettoyer le titre (supprimer caractères spéciaux)
+            clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+            clean_title = re.sub(r'\s+', ' ', clean_title)  # Normaliser les espaces
+            
+            return f"{prefix} {clean_title}.{extension}"
+        else:
+            # Fallback: ajouter le titre avant l'extension
+            name, ext = os.path.splitext(original_filename)
+            clean_title = re.sub(r'[^\w\s-]', '', title).strip()
+            return f"{name} {clean_title}{ext}"
+    except:
+        # En cas d'erreur, retourner le nom original
+        return original_filename
 
 if __name__ == '__main__':
     import os
