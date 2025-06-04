@@ -8,14 +8,22 @@ class ImageEditor {
         this.canvas = null;
         this.originalImage = null;
         this.currentTool = 'select';
+        
+        // Propriétés par défaut pour les nouveaux objets et l'UI
         this.currentColor = '#FF0000';
-        this.strokeWidth = 2;
-        this.opacity = 1;
+        this.currentStrokeWidth = 2;
+        this.currentOpacity = 1;
+        this.currentFontFamily = 'Arial';
+        this.currentFontSize = 16;
+        // Pas besoin de stocker fontWeight, fontStyle, underline ici, 
+        // car ils seront lus/appliqués directement depuis/vers l'objet.
+
         this.history = [];
         this.historyStep = 0;
         this.isDrawing = false;
         this.modal = null;
         this.currentImageData = null;
+        this.layerIdCounter = 0; // Pour les ID uniques des calques
         
         this.tools = {
             select: { cursor: 'default' },
@@ -108,9 +116,22 @@ class ImageEditor {
         // Variables pour le panning
         this.isPanning = false;
         this.lastPanPoint = null;
-        this.canvas.on('object:added', () => this.saveState());
-        this.canvas.on('object:removed', () => this.saveState());
-        this.canvas.on('object:modified', () => this.saveState());
+        this.canvas.on('object:added', (e) => {
+            if (e.target && !e.target.id) {
+                e.target.id = `layer_${this.layerIdCounter++}`;
+            }
+            this.saveState();
+            this.renderLayersUI(); 
+        });
+        this.canvas.on('object:removed', (e) => {
+            this.saveState();
+            this.renderLayersUI(); 
+        });
+        this.canvas.on('object:modified', (e) => {
+            this.saveState();
+            this.renderLayersUI(); 
+            this.updatePropertiesFromActiveObject(); // Mettre à jour l'UI si l'objet modifié est l'actif
+        });
         
         // Gestion du zoom avec la molette + Shift
         this.canvas.on('mouse:wheel', (opt) => this.handleMouseWheel(opt));
@@ -119,22 +140,26 @@ class ImageEditor {
         this.setupCanvasKeyboardEvents();
         
         // Gestion de la sélection d'objets
-        this.canvas.on('selection:created', () => this.updateDeleteButtonVisibility());
-        this.canvas.on('selection:updated', () => this.updateDeleteButtonVisibility());
-        this.canvas.on('selection:cleared', () => this.updateDeleteButtonVisibility());
-        
-        // Double-clic pour éditer les textes
-        this.canvas.on('mouse:dblclick', (e) => {
-            if (e.target && (e.target.type === 'i-text' || e.target.type === 'text')) {
-                if (typeof logInfo === 'function') {
-                    logInfo('📝 Double-clic sur texte détecté');
-                }
-                this.editTextObject(e.target);
-            }
+        this.canvas.on('selection:created', (e) => {
+            this.updateDeleteButtonVisibility();
+            this.updatePropertiesFromActiveObject(); // Mettre à jour les propriétés depuis la nouvelle sélection
+            this.renderLayersUI(); 
+        });
+        this.canvas.on('selection:updated', (e) => {
+            this.updateDeleteButtonVisibility();
+            this.updatePropertiesFromActiveObject(); // Mettre à jour les propriétés
+            this.renderLayersUI(); 
+        });
+        this.canvas.on('selection:cleared', (e) => {
+            this.updateDeleteButtonVisibility();
+            this.updatePropertiesFromActiveObject(); // Remettre les propriétés à l'état par défaut
+            this.renderLayersUI(); 
         });
         
         // Initialiser l'historique
         this.saveState();
+        this.renderLayersUI(); 
+        this.updatePropertiesFromActiveObject(); // Initialiser l'UI des propriétés
     }
     
     /**
@@ -330,9 +355,9 @@ class ImageEditor {
     createShape(x1, y1, x2, y2) {
         const options = {
             stroke: this.currentColor,
-            strokeWidth: this.strokeWidth,
+            strokeWidth: this.currentStrokeWidth,
             fill: 'transparent',
-            opacity: this.opacity
+            opacity: this.currentOpacity
         };
         
         switch (this.currentTool) {
@@ -407,7 +432,7 @@ class ImageEditor {
             fontFamily: document.getElementById('fontFamily').value,
             fontSize: parseInt(document.getElementById('fontSize').value),
             fill: this.currentColor,
-            opacity: this.opacity,
+            opacity: this.currentOpacity,
             editable: true,
             selectable: true,
             hasControls: true,
@@ -417,10 +442,8 @@ class ImageEditor {
         this.canvas.add(text);
         this.canvas.setActiveObject(text);
         
-        // Entrer en mode édition avec un délai plus long pour s'assurer que tout est prêt
-        setTimeout(() => {
+        // Appel direct à editTextObject. Le délai sera géré à l'intérieur de cette fonction.
             this.editTextObject(text);
-        }, 200);
     }
     
     /**
@@ -428,100 +451,63 @@ class ImageEditor {
      */
     editTextObject(textObj) {
         if (typeof logInfo === 'function') {
-            logInfo('✏️ Début édition texte, type:', textObj.type);
+            logInfo('✏️ Début édition texte (via liste de calques), type:', textObj.type, 'ID:', textObj.id);
         }
         
-        try {
-            // S'assurer que l'objet est sélectionné
-            this.canvas.setActiveObject(textObj);
-            this.canvas.renderAll();
-            
-            // Forcer le focus sur le canvas
-            const canvasElement = this.canvas.getElement();
-            canvasElement.focus();
-            
-            // Attendre un peu pour que le canvas soit prêt
-            setTimeout(() => {
-                // Entrer en mode édition
-                textObj.enterEditing();
-                
-                // Sélectionner tout le texte
-                textObj.selectAll();
-                
-                if (typeof logInfo === 'function') {
-                    logInfo('✅ Mode édition activé, isEditing:', textObj.isEditing);
-                }
-                
-                // Forcer le focus sur l'élément de texte caché de Fabric.js
-                const focusAttempts = [100, 200, 300]; // Plusieurs tentatives avec délais croissants
-                
-                focusAttempts.forEach(delay => {
-                    setTimeout(() => {
-                        // Vérifier si on est toujours en mode édition
-                        if (!textObj.isEditing) return;
-                        
-                        // 1. Chercher la textarea cachée dans le conteneur canvas
-                        let targetElement = document.querySelector('.canvas-container textarea');
-                        
-                        // 2. Chercher dans tout le modal
-                        if (!targetElement) {
-                            targetElement = document.querySelector('#imageEditorModal textarea');
-                        }
-                        
-                        // 3. Chercher tous les éléments de texte récemment créés
-                        if (!targetElement) {
-                            const allTextareas = document.querySelectorAll('textarea');
-                            const allInputs = document.querySelectorAll('input[type="text"]');
-                            
-                            // Prendre le dernier élément créé (probablement celui de Fabric.js)
-                            if (allTextareas.length > 0) {
-                                targetElement = allTextareas[allTextareas.length - 1];
-                            } else if (allInputs.length > 0) {
-                                targetElement = allInputs[allInputs.length - 1];
-                            }
-                        }
-                        
-                        if (targetElement) {
-                            if (typeof logInfo === 'function') {
-                                logInfo(`🎯 Tentative ${delay}ms: Focus sur élément trouvé:`, targetElement);
-                            }
-                            targetElement.focus();
-                            
-                            // Forcer la sélection du texte
-                            if (targetElement.select) targetElement.select();
-                            if (targetElement.setSelectionRange) {
-                                targetElement.setSelectionRange(0, targetElement.value.length);
-                            }
-                            
-                            // Déclencher l'événement input pour s'assurer que Fabric.js détecte l'activité
-                            targetElement.dispatchEvent(new Event('input', { bubbles: true }));
-                            targetElement.dispatchEvent(new Event('focus', { bubbles: true }));
-                        } else {
-                            if (typeof logInfo === 'function') {
-                                logInfo(`🔍 Tentative ${delay}ms: Aucun élément de texte trouvé`);
-                            }
-                        }
-                    }, delay);
-                });
-                
-                // Ajouter un listener pour détecter la fin de l'édition
-                const exitHandler = () => {
-                    if (typeof logInfo === 'function') {
-                        logInfo('📝 Fin de l\'édition de texte');
-                    }
-                    this.canvas.defaultCursor = this.tools[this.currentTool].cursor;
-                    textObj.off('editing:exited', exitHandler);
-                };
-                
-                textObj.on('editing:exited', exitHandler);
-                
-            }, 50);
-            
-        } catch (error) {
-            if (typeof logError === 'function') {
-                logError('❌ Erreur lors de l\'édition du texte:', error);
-            }
+        const layersListElement = document.getElementById('layersList');
+        const layerItem = layersListElement.querySelector(`[data-layer-id="${textObj.id}"]`);
+
+        if (!layerItem) {
+            if (typeof logError === 'function') logError('❌ Élément de calque non trouvé pour édition:', textObj.id);
+            return;
         }
+
+        const textDisplay = layerItem.querySelector('.layer-text-content');
+        const currentText = textObj.text;
+
+        if (!textDisplay) {
+             if (typeof logError === 'function') logError('❌ Affichage de texte du calque non trouvé pour:', textObj.id);
+            return;
+        }
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentText;
+        input.className = 'layer-edit-input'; // Pour stylisation future
+        input.style.width = 'calc(100% - 50px)'; // Ajuster pour laisser de la place aux boutons
+
+        // Remplacer l'affichage du texte par l'input
+        textDisplay.innerHTML = ''; // Vider le contenu (icône + texte)
+        textDisplay.appendChild(input);
+        input.focus();
+        input.select();
+
+        const saveChanges = () => {
+            const newText = input.value;
+            textObj.set('text', newText);
+            this.canvas.renderAll();
+            this.saveState(); // Sauvegarder l'état après modification du texte
+            
+            // Restaurer l'affichage normal et mettre à jour l'UI des calques
+            this.renderLayersUI(); 
+            // Potentiellement, au lieu de tout re-rendre, on pourrait juste mettre à jour cet item spécifique.
+            // Pour l'instant, renderLayersUI() est plus simple et gère la surbrillance.
+        };
+
+        input.addEventListener('blur', () => {
+            saveChanges();
+            // L'input sera retiré par renderLayersUI()
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                saveChanges();
+                 // L'input sera retiré par renderLayersUI()
+            } else if (e.key === 'Escape') {
+                // Annuler les changements et restaurer l'affichage normal
+                this.renderLayersUI();
+            }
+        });
     }
     
     /**
@@ -529,7 +515,7 @@ class ImageEditor {
      */
     startFreeDrawing() {
         this.canvas.isDrawingMode = true;
-        this.canvas.freeDrawingBrush.width = this.strokeWidth;
+        this.canvas.freeDrawingBrush.width = this.currentStrokeWidth;
         this.canvas.freeDrawingBrush.color = this.currentColor;
     }
     
@@ -548,18 +534,15 @@ class ImageEditor {
         this.canvas.isDrawingMode = (tool === 'pen');
         this.canvas.selection = (tool === 'select');
         
-        // Mettre à jour le curseur
         this.canvas.defaultCursor = this.tools[tool].cursor;
         
-        // Mettre à jour l'interface
         document.querySelectorAll('.toolbar-btn').forEach(btn => {
             btn.classList.remove('active');
         });
         document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
         
-        // Afficher/masquer les propriétés du texte
-        const textProps = document.querySelector('.text-properties');
-        textProps.style.display = (tool === 'text') ? 'block' : 'none';
+        // Mettre à jour l'UI des propriétés en fonction de l'outil et de la sélection
+        this.updatePropertiesFromActiveObject();
     }
     
     /**
@@ -568,25 +551,33 @@ class ImageEditor {
     setColor(color) {
         this.currentColor = color;
         
-        // Mettre à jour l'interface
         document.querySelectorAll('.color-btn').forEach(btn => {
             btn.classList.remove('active');
         });
         
-        const colorBtn = document.querySelector(`[data-color="${color}"]`);
-        if (colorBtn) {
+        const colorBtn = document.querySelector(`[data-color="${color}"]`) || document.getElementById('customColorPicker');
+        if (colorBtn && colorBtn.type === 'color') { // Pour le custom picker
+             // Pas besoin de .active pour l'input color, sa valeur est son indicateur
+        } else if (colorBtn) {
             colorBtn.classList.add('active');
         }
+        if (document.getElementById('customColorPicker').value !== color && !color.startsWith('#')) {
+             // Si la couleur n'est pas une couleur rapide, le picker la prend
+            document.getElementById('customColorPicker').value = color;
+        }
         
-        // Appliquer à l'objet sélectionné
+
         const activeObject = this.canvas.getActiveObject();
         if (activeObject) {
+            const props = {};
             if (activeObject.type === 'i-text' || activeObject.type === 'text') {
-                activeObject.set('fill', color);
-            } else {
-                activeObject.set('stroke', color);
+                props.fill = color;
+            } else { // Pour les formes, on modifie le trait
+                props.stroke = color;
             }
-            this.canvas.renderAll();
+            activeObject.set(props);
+            this.canvas.requestRenderAll();
+            this.saveState(); // Sauvegarder après modification
         }
     }
     
@@ -637,6 +628,7 @@ class ImageEditor {
         this.canvas.loadFromJSON(state, () => {
             this.canvas.renderAll();
             this.updateHistoryButtons();
+            this.renderLayersUI(); // Mettre à jour les calques après chargement d'un état
         });
     }
     
@@ -657,6 +649,7 @@ class ImageEditor {
             this.canvas.setBackgroundImage(this.originalImage, this.canvas.renderAll.bind(this.canvas));
         }
         this.saveState();
+        this.renderLayersUI(); // Mettre à jour après effacement
     }
     
     /**
@@ -746,49 +739,41 @@ class ImageEditor {
      */
     setupCanvasKeyboardEvents() {
         document.addEventListener('keydown', (e) => {
-            // S'assurer que l'éditeur est ouvert
             if (!this.modal || !document.getElementById('imageEditorModal').classList.contains('show')) {
                 return;
             }
             
-            // Vérifier si on édite du texte - méthode plus robuste
-            const activeObject = this.canvas.getActiveObject();
-            const isEditingText = activeObject && activeObject.isEditing;
-            
-            // Vérifier aussi si on a un élément focusé qui ressemble à un champ de texte
-            const focusedElement = document.activeElement;
-            const isTextInputFocused = focusedElement && (
-                focusedElement.tagName === 'TEXTAREA' || 
-                (focusedElement.tagName === 'INPUT' && focusedElement.type === 'text') ||
-                focusedElement.contentEditable === 'true'
-            );
+            // Vérifier si l'élément actif est un champ de saisie (pour l'édition des calques)
+            const activeElement = document.activeElement;
+            const isEditingInLayerInput = activeElement && 
+                                          (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+                                          activeElement.closest('.layers-list'); // S'assurer que c'est bien dans notre liste de calques
             
             if (typeof logInfo === 'function') {
-                logInfo('⌨️ Touche:', e.key, 'Édition texte:', isEditingText, 'Input focusé:', isTextInputFocused);
+                logInfo('⌨️ Touche:', e.key, 'Édition dans input calque:', isEditingInLayerInput);
             }
-            
-            // Si on édite du texte OU qu'un champ de texte a le focus, ne rien intercepter
-            if (isEditingText || isTextInputFocused) {
-                if (typeof logInfo === 'function') {
-                    logInfo('📝 Mode édition texte actif - événement transmis à Fabric.js');
-                }
-                // Laisser passer TOUS les événements sans intervention
+
+            // Si l'utilisateur est en train de taper dans un champ d'édition de calque, ne rien faire.
+            if (isEditingInLayerInput) {
+                // Laisser l'input gérer l'événement, sauf pour Échap qui pourrait annuler globalement l'édition de l'input.
+                // Cependant, la logique d'Escape est déjà dans l'event listener de l'input dans editTextObject.
                 return;
             }
             
-            // Si on n'édite pas de texte, traiter les raccourcis
+            // Si on n'édite pas de texte dans un input de calque, traiter les raccourcis de l'éditeur.
             switch(e.key) {
                 case 'Delete':
+                case 'Backspace':
                     e.preventDefault();
-                    this.deleteSelectedObject();
+                    this.deleteSelectedObject(); // Appellera renderLayersUI via object:removed
                     break;
                 case 'Escape':
                     this.canvas.discardActiveObject();
                     this.canvas.renderAll();
+                    this.renderLayersUI(); // Mettre à jour la surbrillance dans les calques
                     break;
                 case 'Control':
                 case 'Meta':
-                    // Changer le curseur quand Ctrl est pressé
                     if (this.canvas.getZoom() > this.calculateMinZoom()) {
                         this.canvas.defaultCursor = 'grab';
                         this.canvas.hoverCursor = 'grab';
@@ -797,31 +782,17 @@ class ImageEditor {
             }
         });
         
-        // Événements spéciaux pour l'édition de texte
-        this.canvas.on('text:editing:entered', (e) => {
-            if (typeof logInfo === 'function') {
-                logInfo('🎯 Entrée en mode édition de texte');
-            }
-            // Désactiver complètement nos gestionnaires pendant l'édition
-            this.textEditingActive = true;
-        });
-        
-        this.canvas.on('text:editing:exited', (e) => {
-            if (typeof logInfo === 'function') {
-                logInfo('🎯 Sortie du mode édition de texte');
-            }
-            // Réactiver nos gestionnaires
-            this.textEditingActive = false;
-        });
-        
-        // Gestion du relâchement des touches
         document.addEventListener('keyup', (e) => {
             if (!this.modal || !document.getElementById('imageEditorModal').classList.contains('show')) {
                 return;
             }
+            // Si l'édition se fait dans un input, ne pas interférer avec le curseur
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') && activeElement.closest('.layers-list')) {
+                return;
+            }
             
             if (e.key === 'Control' || e.key === 'Meta') {
-                // Restaurer le curseur normal
                 this.canvas.defaultCursor = this.tools[this.currentTool].cursor;
                 this.canvas.hoverCursor = this.tools[this.currentTool].cursor;
             }
@@ -1532,11 +1503,11 @@ class ImageEditor {
      */
     updateUI() {
         // Mettre à jour les valeurs des contrôles
-        document.getElementById('strokeWidth').value = this.strokeWidth;
-        document.getElementById('strokeWidthValue').textContent = `${this.strokeWidth}px`;
+        document.getElementById('strokeWidth').value = this.currentStrokeWidth;
+        document.getElementById('strokeWidthValue').textContent = `${this.currentStrokeWidth}px`;
         
-        document.getElementById('opacity').value = this.opacity * 100;
-        document.getElementById('opacityValue').textContent = `${Math.round(this.opacity * 100)}%`;
+        document.getElementById('opacity').value = Math.round(this.currentOpacity * 100);
+        document.getElementById('opacityValue').textContent = `${Math.round(this.currentOpacity * 100)}%`;
         
         this.updateHistoryButtons();
     }
@@ -1577,15 +1548,15 @@ class ImageEditor {
         
         // Couleurs
         document.addEventListener('click', (e) => {
-            if (e.target.matches('.color-btn[data-color]')) {
-                this.setColor(e.target.dataset.color);
+            const colorButton = e.target.closest('.color-btn[data-color]');
+            if (colorButton) {
+                this.setColor(colorButton.dataset.color);
             }
         });
         
-        // Couleur personnalisée
-        const colorPicker = document.getElementById('customColorPicker');
-        if (colorPicker) {
-            colorPicker.addEventListener('change', (e) => {
+        const customColorPicker = document.getElementById('customColorPicker');
+        if (customColorPicker) {
+            customColorPicker.addEventListener('input', (e) => { // 'input' pour un retour en direct
                 this.setColor(e.target.value);
             });
         }
@@ -1594,16 +1565,143 @@ class ImageEditor {
         const strokeWidth = document.getElementById('strokeWidth');
         if (strokeWidth) {
             strokeWidth.addEventListener('input', (e) => {
-                this.strokeWidth = parseInt(e.target.value);
-                document.getElementById('strokeWidthValue').textContent = `${this.strokeWidth}px`;
+                const val = parseInt(e.target.value);
+                this.currentStrokeWidth = val;
+                document.getElementById('strokeWidthValue').textContent = `${val}px`;
+                const activeObject = this.canvas.getActiveObject();
+
+                if (activeObject && (activeObject.type !== 'i-text' && activeObject.type !== 'text')) {
+                    // Log initial de l'état de l'objet
+                    if (typeof logInfo === 'function') {
+                        logInfo('[STROKE UPDATE - START]', {
+                            id: activeObject.id,
+                            type: activeObject.type,
+                            currentStroke: activeObject.stroke,
+                            currentStrokeWidth: activeObject.strokeWidth,
+                            newStrokeWidthValue: val,
+                            currentFill: activeObject.fill,
+                            editorCurrentColor: this.currentColor
+                        });
+                    }
+
+                    let strokeToApply = activeObject.stroke;
+                    // Si le trait actuel de l'objet est manquant ou transparent,
+                    // et que le remplissage est aussi transparent (ou manquant), 
+                    // alors nous utilisons la couleur active de l'éditeur pour le trait.
+                    // Cela garantit que le trait sera visible lorsque son épaisseur est modifiée.
+                    if (!strokeToApply || strokeToApply === 'transparent') {
+                        if (!activeObject.fill || activeObject.fill === 'transparent') {
+                            strokeToApply = this.currentColor;
+                            if (typeof logInfo === 'function') {
+                                logInfo('[STROKE UPDATE] Stroke was undefined/transparent with transparent fill. Setting stroke to editor currentColor:', strokeToApply);
+                            }
+                        }
+                    }
+
+                    activeObject.set({
+                        strokeWidth: val,
+                        stroke: strokeToApply, // Appliquer la couleur de trait déterminée
+                        strokeUniform: true 
+                    });
+
+                    if (typeof logInfo === 'function') {
+                        logInfo('[STROKE UPDATE - END]', {
+                            id: activeObject.id,
+                            type: activeObject.type,
+                            updatedStroke: activeObject.stroke,
+                            updatedStrokeWidth: activeObject.strokeWidth,
+                            strokeUniformSet: activeObject.strokeUniform
+                        });
+                    }
+
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
             });
         }
         
         const opacity = document.getElementById('opacity');
         if (opacity) {
             opacity.addEventListener('input', (e) => {
-                this.opacity = parseInt(e.target.value) / 100;
-                document.getElementById('opacityValue').textContent = `${Math.round(this.opacity * 100)}%`;
+                const val = parseInt(e.target.value) / 100;
+                this.currentOpacity = val;
+                document.getElementById('opacityValue').textContent = `${Math.round(val * 100)}%`;
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject) {
+                    activeObject.set('opacity', val);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
+            });
+        }
+
+        const fontFamily = document.getElementById('fontFamily');
+        if (fontFamily) {
+            fontFamily.addEventListener('change', (e) => {
+                const val = e.target.value;
+                this.currentFontFamily = val;
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                    activeObject.set('fontFamily', val);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
+            });
+        }
+
+        const fontSize = document.getElementById('fontSize');
+        if (fontSize) {
+            fontSize.addEventListener('input', (e) => {
+                const val = parseInt(e.target.value);
+                this.currentFontSize = val;
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                    activeObject.set('fontSize', val);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
+            });
+        }
+
+        const boldBtn = document.getElementById('boldBtn');
+        if (boldBtn) {
+            boldBtn.addEventListener('click', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                    const isBold = activeObject.fontWeight === 'bold';
+                    activeObject.set('fontWeight', isBold ? 'normal' : 'bold');
+                    boldBtn.classList.toggle('active', !isBold);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
+            });
+        }
+
+        const italicBtn = document.getElementById('italicBtn');
+        if (italicBtn) {
+            italicBtn.addEventListener('click', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                    const isItalic = activeObject.fontStyle === 'italic';
+                    activeObject.set('fontStyle', isItalic ? 'normal' : 'italic');
+                    italicBtn.classList.toggle('active', !isItalic);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
+            });
+        }
+
+        const underlineBtn = document.getElementById('underlineBtn');
+        if (underlineBtn) {
+            underlineBtn.addEventListener('click', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                    const isUnderline = activeObject.underline === true;
+                    activeObject.set('underline', !isUnderline);
+                    underlineBtn.classList.toggle('active', !isUnderline);
+                    this.canvas.requestRenderAll();
+                    this.saveState();
+                }
             });
         }
         
@@ -1756,6 +1854,187 @@ class ImageEditor {
             logInfo('✅ Éditeur fermé');
         }
     }
+
+    // Nouvelle fonction pour afficher les calques
+    renderLayersUI() {
+        const layersListElement = document.getElementById('layersList');
+        if (!layersListElement) return;
+
+        layersListElement.innerHTML = ''; 
+        const objects = this.canvas.getObjects().slice().reverse(); 
+
+        const activeObject = this.canvas.getActiveObject();
+        const activeObjects = this.canvas.getActiveObjects ? this.canvas.getActiveObjects() : (activeObject ? [activeObject] : []);
+
+
+        objects.forEach(obj => {
+            if (!obj.id) { 
+                obj.id = `layer_${this.layerIdCounter++}`;
+            }
+
+            const listItem = document.createElement('div'); 
+            listItem.className = 'layer-item';
+            listItem.setAttribute('data-layer-id', obj.id);
+
+            if (activeObjects.some(activeObj => activeObj.id === obj.id)) {
+                listItem.classList.add('active');
+            }
+
+            let content = '';
+            let objectTypeDisplay = '';
+            let iconClass = 'fas fa-square'; 
+
+            switch (obj.type) {
+                case 'i-text':
+                case 'text':
+                    objectTypeDisplay = 'Texte';
+                    iconClass = 'fas fa-font';
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${obj.text || 'Vide'}</span>`;
+                    break;
+                case 'rect':
+                    objectTypeDisplay = 'Rectangle';
+                    iconClass = 'fas fa-square';
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> Rectangle</span>`;
+                    break;
+                case 'circle':
+                    objectTypeDisplay = 'Cercle';
+                    iconClass = 'fas fa-circle';
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> Cercle</span>`;
+                    break;
+                case 'line':
+                    objectTypeDisplay = 'Ligne';
+                    iconClass = 'fas fa-minus';
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> Ligne</span>`;
+                    break;
+                case 'triangle': 
+                     objectTypeDisplay = 'Triangle'; 
+                     iconClass = 'fas fa-caret-up'; 
+                     content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> Triangle</span>`;
+                     break;
+                case 'group': 
+                    objectTypeDisplay = 'Groupe';
+                    iconClass = 'fas fa-object-group';
+                    if (obj._objects && obj._objects.length === 3 && obj._objects[0].type === 'line' && obj._objects[1].type === 'line' && obj._objects[2].type === 'line') {
+                        objectTypeDisplay = 'Flèche';
+                        iconClass = 'fas fa-long-arrow-alt-right';
+                    }
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${objectTypeDisplay}</span>`;
+                    break;
+                default:
+                    objectTypeDisplay = obj.type ? obj.type.charAt(0).toUpperCase() + obj.type.slice(1) : 'Objet';
+                    iconClass = 'fas fa-cube';
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${objectTypeDisplay}</span>`;
+            }
+            
+            listItem.innerHTML = content;
+
+            if (obj.type === 'i-text' || obj.type === 'text') {
+                const editButton = document.createElement('button');
+                editButton.innerHTML = '<i class="fas fa-pencil-alt"></i>';
+                editButton.className = 'layer-edit-btn';
+                editButton.title = 'Éditer le texte';
+                editButton.onclick = (e) => {
+                    e.stopPropagation(); 
+                    this.editTextObject(obj);
+                };
+                listItem.appendChild(editButton);
+            }
+
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            deleteButton.className = 'layer-delete-btn';
+            deleteButton.title = 'Supprimer ce calque';
+            deleteButton.onclick = (e) => {
+                e.stopPropagation();
+                this.canvas.setActiveObject(obj); 
+                this.deleteSelectedObject(); 
+            };
+            listItem.appendChild(deleteButton);
+
+            listItem.onclick = () => {
+                this.canvas.discardActiveObject(); // D'abord désélectionner pour forcer la mise à jour si le même objet est recliqué
+                this.canvas.setActiveObject(obj);
+                this.canvas.requestRenderAll();
+                this.updatePropertiesFromActiveObject(); // Mettre à jour l'UI des propriétés
+                this.renderLayersUI(); // Pour mettre à jour la surbrillance
+            };
+
+            layersListElement.appendChild(listItem);
+        });
+    }
+
+    // Nouvelle fonction pour mettre à jour l'UI des propriétés depuis l'objet actif
+    updatePropertiesFromActiveObject() {
+        const activeObject = this.canvas.getActiveObject();
+        const textPropertiesPanel = document.querySelector('.text-properties');
+        const strokeWidthGroup = document.getElementById('strokeWidth').closest('.property-group'); // Cible le groupe parent
+
+        if (activeObject) {
+            this.currentStrokeWidth = activeObject.strokeWidth === undefined ? this.currentStrokeWidth : activeObject.strokeWidth;
+            this.currentOpacity = activeObject.opacity === undefined ? this.currentOpacity : activeObject.opacity;
+            this.currentColor = activeObject.stroke || activeObject.fill || this.currentColor;
+
+            document.getElementById('strokeWidth').value = this.currentStrokeWidth;
+            document.getElementById('strokeWidthValue').textContent = `${this.currentStrokeWidth}px`;
+            
+            document.getElementById('opacity').value = Math.round(this.currentOpacity * 100);
+            document.getElementById('opacityValue').textContent = `${Math.round(this.currentOpacity * 100)}%`;
+            
+            const customColorPicker = document.getElementById('customColorPicker');
+            if (customColorPicker) customColorPicker.value = this.currentColor;
+            document.querySelectorAll('.color-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.color === this.currentColor);
+            });
+
+            if (activeObject.type === 'i-text' || activeObject.type === 'text') {
+                textPropertiesPanel.style.display = 'block';
+                if (strokeWidthGroup) strokeWidthGroup.style.display = 'none'; // Masquer l'épaisseur pour le texte
+
+                this.currentFontFamily = activeObject.fontFamily || this.currentFontFamily;
+                this.currentFontSize = activeObject.fontSize || this.currentFontSize;
+
+                document.getElementById('fontFamily').value = this.currentFontFamily;
+                document.getElementById('fontSize').value = this.currentFontSize;
+
+                document.getElementById('boldBtn').classList.toggle('active', activeObject.fontWeight === 'bold');
+                document.getElementById('italicBtn').classList.toggle('active', activeObject.fontStyle === 'italic');
+                document.getElementById('underlineBtn').classList.toggle('active', activeObject.underline === true);
+
+            } else { // Pour les formes et autres objets non-texte
+                textPropertiesPanel.style.display = 'none';
+                if (strokeWidthGroup) strokeWidthGroup.style.display = 'block'; // Afficher l'épaisseur pour les formes
+            }
+        } else {
+            textPropertiesPanel.style.display = 'none'; 
+            if (strokeWidthGroup) strokeWidthGroup.style.display = 'block'; // Afficher par défaut si rien n'est sélectionné
+
+            document.getElementById('strokeWidth').value = this.currentStrokeWidth;
+            document.getElementById('strokeWidthValue').textContent = `${this.currentStrokeWidth}px`;
+            document.getElementById('opacity').value = Math.round(this.currentOpacity * 100);
+            document.getElementById('opacityValue').textContent = `${Math.round(this.currentOpacity * 100)}%`;
+            document.getElementById('fontFamily').value = this.currentFontFamily;
+            document.getElementById('fontSize').value = this.currentFontSize;
+            document.getElementById('boldBtn').classList.remove('active');
+            document.getElementById('italicBtn').classList.remove('active');
+            document.getElementById('underlineBtn').classList.remove('active');
+        }
+        
+        // Gérer l'affichage du panneau de texte en fonction de l'outil sélectionné
+        if (this.currentTool === 'text') {
+            textPropertiesPanel.style.display = 'block';
+            if (activeObject && (activeObject.type !== 'i-text' && activeObject.type !== 'text')) {
+                 // Si l'outil texte est actif mais qu'une forme est sélectionnée, on masque l'épaisseur pour cette forme.
+                 if (strokeWidthGroup) strokeWidthGroup.style.display = 'none';
+            } else if (!activeObject) {
+                 // Si outil texte actif et rien de sélectionné, on masque aussi l'épaisseur.
+                 if (strokeWidthGroup) strokeWidthGroup.style.display = 'none';
+            }
+        } else if (!activeObject || (activeObject.type !== 'i-text' && activeObject.type !== 'text')) {
+            // Si un autre outil est sélectionné, et qu'un objet non-texte est actif, ou rien n'est actif.
+            textPropertiesPanel.style.display = 'none';
+             if (strokeWidthGroup) strokeWidthGroup.style.display = 'block'; // Assurer que l'épaisseur est visible pour les formes
+        }
+    }
 }
 
 // Instance globale de l'éditeur
@@ -1766,4 +2045,5 @@ window.openImageEditor = function(filename, imageData = null) {
     window.imageEditor.openEditor(filename, imageData);
 };
 
+console.log('📝 Image Editor chargé et prêt'); 
 console.log('📝 Image Editor chargé et prêt'); 

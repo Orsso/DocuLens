@@ -1,4 +1,119 @@
 <!-- Modal d'Édition d'Images -->
+<style>
+    /* Styles pour la liste des calques - Thème Dark Frostglass */
+    .layers-list {
+        background-color: rgba(15, 23, 42, 0.8); /* var(--dark-blue, #0f172a) avec opacité */
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px); /* Pour Safari */
+        border: 1px solid rgba(59, 130, 246, 0.2); /* Accent bleu clair transparent */
+        border-radius: 6px;
+        color: rgba(255, 255, 255, 0.85); /* Texte clair */
+        max-height: 280px;
+        overflow-y: auto;
+        padding: 5px;
+        margin-top: 10px;
+    }
+
+    .layer-item {
+        padding: 9px 12px;
+        border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        font-size: 0.9em;
+        transition: background-color 0.2s ease;
+    }
+
+    .layer-item:last-child {
+        border-bottom: none;
+    }
+
+    .layer-item.active {
+        background-color: rgba(59, 130, 246, 0.3); /* Accent bleu plus prononcé pour sélection */
+        color: #fff;
+        font-weight: 500;
+    }
+
+    .layer-item:hover:not(.active) {
+        background-color: rgba(59, 130, 246, 0.1); /* Hover léger */
+    }
+
+    .layer-icon {
+        margin-right: 10px;
+        color: rgba(200, 220, 255, 0.8); /* Icônes un peu plus claires */
+        width: 16px;
+        text-align: center;
+    }
+
+    .layer-item .layer-text-content {
+        flex-grow: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+    }
+
+    .layer-edit-btn, .layer-delete-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px 7px;
+        margin-left: 6px;
+        font-size: 0.95em;
+        border-radius: 4px;
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .layer-edit-btn {
+        color: rgba(130, 190, 255, 0.9); /* Bleu clair pour édition */
+    }
+    .layer-edit-btn:hover {
+        color: #fff;
+        background-color: rgba(59, 130, 246, 0.4);
+    }
+
+    .layer-delete-btn {
+        color: rgba(255, 130, 130, 0.9); /* Rouge clair pour suppression */
+    }
+    .layer-delete-btn:hover {
+        color: #fff;
+        background-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .layer-edit-input {
+        padding: 7px 10px;
+        border: 1px solid rgba(59, 130, 246, 0.5);
+        border-radius: 4px;
+        flex-grow: 1;
+        font-size: 0.9em;
+        background-color: rgba(15, 23, 42, 0.9); /* Fond sombre pour l'input */
+        color: rgba(255, 255, 255, 0.9);
+    }
+    .layer-edit-input:focus {
+        outline: none;
+        border-color: rgba(59, 130, 246, 0.8);
+        box-shadow: 0 0 0 0.2rem rgba(59, 130, 246,0.25);
+    }
+
+    /* Style pour la scrollbar (optionnel, mais améliore le look dark) */
+    .layers-list::-webkit-scrollbar {
+        width: 8px;
+    }
+    .layers-list::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.1);
+        border-radius: 10px;
+    }
+    .layers-list::-webkit-scrollbar-thumb {
+        background: rgba(59, 130, 246, 0.4);
+        border-radius: 10px;
+    }
+    .layers-list::-webkit-scrollbar-thumb:hover {
+        background: rgba(59, 130, 246, 0.6);
+    }
+</style>
+
 <div class="modal fade" id="imageEditorModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-fullscreen">
         <div class="modal-content image-editor-modal">
@@ -90,16 +205,6 @@
                                 <input type="range" id="strokeWidth" min="1" max="20" value="2" class="form-range">
                                 <span id="strokeWidthValue">2px</span>
                             </div>
-                        </div>
-                        
-                        <!-- Style de Trait -->
-                        <div class="property-group">
-                            <label>Style</label>
-                            <select id="strokeStyle" class="form-select">
-                                <option value="solid">Continu</option>
-                                <option value="dashed">Pointillés</option>
-                                <option value="dotted">Points</option>
-                            </select>
                         </div>
                         
                         <!-- Opacité -->
