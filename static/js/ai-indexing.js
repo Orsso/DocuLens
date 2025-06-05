@@ -1,20 +1,25 @@
 /**
- * Module d'auto-indexation IA pour DocuLens
- * Gère l'interface et les appels API pour l'indexation automatique des images
+ * Module d'auto-indexation IA pour DocuLens v3.0
+ * 
+ * REFONTE COMPLÈTE - ARCHITECTURE IMMUABLE :
+ * ✅ Aucun renommage physique de fichiers
+ * ✅ Stockage des métadonnées IA dans appState uniquement
+ * ✅ Utilisation d'ImageDisplayManager pour l'affichage
+ * ✅ Mise à jour de l'interface via renderSections()
  */
 
 class AIIndexingManager {
     constructor() {
         this.isProcessing = false;
-        this.modal = null;
         this.results = [];
         this.documentName = null;
+        this.version = '3.0.0-IMMUTABLE-METADATA';
         
+        console.log(`🚀 [AIIndexingManager] v${this.version} - Architecture Immuable initialisée`);
         this.init();
     }
     
     init() {
-        this.createModal();
         this.checkServiceStatus();
     }
     
@@ -79,53 +84,6 @@ class AIIndexingManager {
     }
     
     /**
-     * Crée le modal d'auto-indexation
-     */
-    createModal() {
-        const modalHTML = `
-            <div class="modal fade" id="aiIndexingModal" tabindex="-1" aria-labelledby="aiIndexingModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-xl">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title text-white" id="aiIndexingModalLabel">
-                                <i class="fas fa-brain me-2"></i>Auto-indexation IA
-                            </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div id="aiIndexingContent">
-                                <!-- Le contenu sera injecté dynamiquement -->
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <div class="ai-privacy-notice">
-                                <i class="fas fa-info-circle text-info"></i>
-                                <small class="text-muted">
-                                    Les images seront envoyées de manière sécurisée vers l'API Mistral pour analyse. 
-                                    Aucune donnée n'est stockée sur leurs serveurs.
-                                </small>
-                            </div>
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
-                            <button type="button" class="btn btn-success" id="applyAiSuggestions" style="display: none;">
-                                <i class="fas fa-check"></i> Appliquer les suggestions
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Ajouter le modal au DOM
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-        this.modal = new bootstrap.Modal(document.getElementById('aiIndexingModal'));
-        
-        // Attacher les event listeners
-        document.getElementById('applyAiSuggestions').addEventListener('click', () => {
-            this.applySuggestions();
-        });
-    }
-    
-    /**
      * Démarre l'auto-indexation des images sélectionnées
      */
     async startAutoIndexing() {
@@ -133,30 +91,16 @@ class AIIndexingManager {
         
         const selectedImages = this.getSelectedImages();
         
-        // Debug détaillé
-        console.log('🔍 Debug sélection d\'images:');
-        console.log(`- Images sélectionnées trouvées: ${selectedImages.length}`);
-        console.log(`- Liste des images: `, selectedImages);
-        
-        // Vérifier le système de sélection global
-        if (typeof window.selectedImages !== 'undefined' && window.selectedImages instanceof Set) {
-            console.log(`- Système de sélection global détecté: ${window.selectedImages.size} images dans le Set`);
-        }
-        
-        // Vérifier les cartes d'images sélectionnées visuellement
-        const visuallySelected = document.querySelectorAll('.image-card.selected');
-        console.log(`- Images visuellement sélectionnées: ${visuallySelected.length}`);
+        console.log('🔍 Debug sélection d\'images:', {
+            selectedCount: selectedImages.length,
+            selectedImages: selectedImages
+        });
         
         if (selectedImages.length === 0) {
-            let message = 'Aucune image sélectionnée.';
-            
-            // Ajouter des instructions selon le contexte
             const totalImages = document.querySelectorAll('.image-card').length;
-            if (totalImages > 0) {
-                message += ` Cliquez sur les images pour les sélectionner (${totalImages} image(s) disponible(s)).`;
-            } else {
-                message += ' Aucune image disponible.';
-            }
+            const message = totalImages > 0 
+                ? `Aucune image sélectionnée. Cliquez sur les images pour les sélectionner (${totalImages} image(s) disponible(s)).`
+                : 'Aucune image disponible.';
             
             this.showNotification(message, 'warning');
             return;
@@ -170,20 +114,13 @@ class AIIndexingManager {
         }
         
         this.documentName = appState.documentName;
-        this.isProcessing = true;
         
-        // Afficher le modal
-        this.showProcessingModal(selectedImages);
-        this.modal.show();
-        
-        try {
-            // Analyser les images
-            await this.analyzeImages(selectedImages);
-        } catch (error) {
-            console.error('Erreur lors de l\'auto-indexation:', error);
-            this.showNotification('Erreur lors de l\'auto-indexation', 'error');
-        } finally {
-            this.isProcessing = false;
+        // Utiliser le système unifié
+        if (typeof window.aiIndexingModal !== 'undefined') {
+            window.aiIndexingModal.show(selectedImages);
+        } else {
+            console.error('Modal unifié non disponible, fallback vers ancien système');
+            this.showNotification('Erreur d\'interface', 'error');
         }
     }
     
@@ -191,8 +128,6 @@ class AIIndexingManager {
      * Récupère les images sélectionnées
      */
     getSelectedImages() {
-        // Utiliser le système de sélection existant de l'application
-        // Les images sélectionnées sont stockées dans le Set global 'selectedImages'
         if (typeof window.selectedImages !== 'undefined' && window.selectedImages instanceof Set) {
             return Array.from(window.selectedImages);
         }
@@ -212,391 +147,287 @@ class AIIndexingManager {
     }
     
     /**
-     * Affiche le modal de traitement
+     * 🆕 NOUVELLE MÉTHODE : Application des suggestions IA
+     * Stocke les métadonnées IA sans renommer les fichiers physiques
      */
-    showProcessingModal(images) {
-        const content = document.getElementById('aiIndexingContent');
-        content.innerHTML = `
-            <div class="ai-processing-container">
-                <div class="ai-processing-header">
-                    <h6><i class="fas fa-cog fa-spin me-2"></i>Analyse en cours...</h6>
-                    <p class="text-muted">Analyse de ${images.length} image(s) via Mistral AI</p>
-                </div>
-                
-                <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         role="progressbar" style="width: 0%" id="aiProgressBar"></div>
-                </div>
-                
-                <div id="aiProgressLog" class="ai-progress-log">
-                    <!-- Les logs de progression seront ajoutés ici -->
-                </div>
-            </div>
-        `;
-    }
-    
-    /**
-     * Analyse les images via l'API
-     */
-    async analyzeImages(images) {
-        const progressBar = document.getElementById('aiProgressBar');
-        const progressLog = document.getElementById('aiProgressLog');
-        
+    async applyAISuggestions(selectedSuggestions) {
         try {
-            const response = await fetch('/api/ai-indexing/analyze', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    images: images,
-                    document_name: this.documentName
-                })
-            });
+            console.log('🚀 [AI-Indexing] Application des suggestions IA (métadonnées uniquement)');
+            console.log('📋 Suggestions à appliquer:', selectedSuggestions);
             
-            if (!response.ok) {
-                throw new Error(`Erreur HTTP: ${response.status}`);
+            if (!window.appState) {
+                throw new Error('appState non disponible');
             }
             
-            const data = await response.json();
+            // 🔍 DEBUG COMPLET: Afficher toute la structure appState
+            console.log('🧪 [DEBUG] Structure complète appState:');
+            console.log('📦 appState:', JSON.stringify(window.appState, null, 2));
+            console.log('🔢 Nombre de sections:', window.appState.sections?.length || 0);
+            console.log('🔢 Images non-assignées:', window.appState.unassignedImages?.length || 0);
             
-            if (data.success) {
-                this.results = data.results;
-                this.showResults();
+            // Appliquer les métadonnées IA dans appState
+            const updatedCount = this.updateAppStateWithAIMetadata(selectedSuggestions);
+            
+            if (updatedCount > 0) {
+                // Vider le cache pour forcer la régénération des noms
+                if (window.imageDisplayManager) {
+                    window.imageDisplayManager.clearNameCache();
+                }
                 
-                progressBar.style.width = '100%';
-                progressBar.classList.remove('progress-bar-animated');
+                // Re-rendre l'interface pour afficher les nouveaux noms IA
+                if (typeof renderSections === 'function') {
+                    renderSections();
+                }
+
+                // Mettre à jour les statistiques
+                if (typeof updateStats === 'function') {
+                    updateStats();
+                }
                 
-                progressLog.innerHTML += `
-                    <div class="ai-log-entry ai-log-success">
-                        <i class="fas fa-check-circle"></i>
-                        Analyse terminée: ${data.successful}/${data.total_processed} images analysées avec succès
-                    </div>
-                `;
-            } else {
-                throw new Error(data.error || 'Erreur inconnue');
-            }
-            
-        } catch (error) {
-            progressLog.innerHTML += `
-                <div class="ai-log-entry ai-log-error">
-                    <i class="fas fa-times-circle"></i>
-                    Erreur: ${error.message}
-                </div>
-            `;
-        }
-    }
-    
-    /**
-     * Affiche les résultats de l'analyse
-     */
-    showResults() {
-        const content = document.getElementById('aiIndexingContent');
-        const applyButton = document.getElementById('applyAiSuggestions');
-        
-        let resultsHTML = `
-            <div class="ai-results-container">
-                <div class="ai-results-header">
-                    <h6><i class="fas fa-brain me-2"></i>Résultats de l'analyse IA</h6>
-                    <p class="text-muted">Suggestions de titres et tags pour vos images</p>
-                </div>
-                
-                <div class="ai-results-grid">
-        `;
-        
-        let hasValidResults = false;
-        
-        this.results.forEach(result => {
-            if (result.success) {
-                hasValidResults = true;
-                resultsHTML += `
-                    <div class="ai-result-item" data-filename="${result.filename}">
-                        <div class="ai-result-header">
-                            <div class="ai-result-filename">${result.filename}</div>
-                            <label class="ai-result-checkbox">
-                                <input type="checkbox" checked class="ai-suggestion-checkbox">
-                                <span class="checkmark"></span>
-                            </label>
-                        </div>
-                        
-                        <div class="ai-result-content">
-                            <div class="ai-result-field">
-                                <label>Nouveau nom suggéré:</label>
-                                <input type="text" class="form-control ai-suggested-filename" 
-                                       value="${result.suggested_filename}" data-original="${result.filename}">
-                            </div>
-                            
-                            <div class="ai-result-field">
-                                <label>Titre généré:</label>
-                                <span class="ai-generated-title">${result.title}</span>
-                            </div>
-                            
-                            <div class="ai-result-field">
-                                <label>Tags:</label>
-                                <div class="ai-tags">
-                                    ${result.tags.map(tag => `<span class="ai-tag">${tag}</span>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                resultsHTML += `
-                    <div class="ai-result-item ai-result-error">
-                        <div class="ai-result-header">
-                            <div class="ai-result-filename">${result.filename}</div>
-                            <i class="fas fa-exclamation-triangle text-warning"></i>
-                        </div>
-                        <div class="ai-result-error-message">
-                            <i class="fas fa-times-circle"></i>
-                            ${result.error}
-                        </div>
-                    </div>
-                `;
-            }
-        });
-        
-        resultsHTML += `
-                </div>
-                
-                <div class="ai-results-controls mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllSuggestions">
-                        <i class="fas fa-check-square"></i> Tout sélectionner
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="unselectAllSuggestions">
-                        <i class="fas fa-square"></i> Tout désélectionner
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        content.innerHTML = resultsHTML;
-        
-        if (hasValidResults) {
-            applyButton.style.display = 'inline-block';
-        }
-        
-        // Attacher les event listeners
-        document.getElementById('selectAllSuggestions')?.addEventListener('click', () => {
-            document.querySelectorAll('.ai-suggestion-checkbox').forEach(cb => cb.checked = true);
-        });
-        
-        document.getElementById('unselectAllSuggestions')?.addEventListener('click', () => {
-            document.querySelectorAll('.ai-suggestion-checkbox').forEach(cb => cb.checked = false);
-        });
-    }
-    
-    /**
-     * Applique les suggestions sélectionnées
-     */
-    async applySuggestions() {
-        const selectedSuggestions = [];
-        
-        document.querySelectorAll('.ai-suggestion-checkbox:checked').forEach(checkbox => {
-            const item = checkbox.closest('.ai-result-item');
-            const filenameInput = item.querySelector('.ai-suggested-filename');
-            const originalFilename = item.dataset.filename;
-            
-            if (filenameInput && originalFilename) {
-                selectedSuggestions.push({
-                    old_filename: originalFilename,
-                    new_filename: filenameInput.value
-                });
-            }
-        });
-        
-        if (selectedSuggestions.length === 0) {
-            this.showNotification('Aucune suggestion sélectionnée', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch('/api/ai-indexing/rename', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    renames: selectedSuggestions,
-                    document_name: this.documentName
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Erreur HTTP: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.success) {
                 this.showNotification(
-                    `${data.successful}/${data.total_processed} images renommées avec succès`,
+                    `${updatedCount} image(s) indexée(s) avec succès`,
                     'success'
                 );
                 
-                // Fermer le modal et mettre à jour l'interface sans recharger
-                this.modal.hide();
-                
-                // Mettre à jour l'interface immédiatement
-                this.updateInterfaceAfterRename(selectedSuggestions, data);
+                console.log(`✅ [AI-Indexing] ${updatedCount} images mises à jour dans appState`);
+                return true;
             } else {
-                throw new Error(data.error || 'Erreur lors du renommage');
+                throw new Error('Aucune image mise à jour');
             }
             
         } catch (error) {
-            this.showNotification(`Erreur lors du renommage: ${error.message}`, 'error');
+            console.error('❌ [AI-Indexing] Erreur lors de l\'application des suggestions:', error);
+            this.showNotification(
+                `Erreur lors de l'indexation: ${error.message}`,
+                'error'
+            );
+            return false;
         }
     }
     
     /**
-     * Met à jour l'interface après renommage sans recharger la page
+     * 🆕 Met à jour appState avec les métadonnées IA (sans renommage physique)
      */
-    updateInterfaceAfterRename(selectedSuggestions, data) {
-        console.log('🔄 Mise à jour interface après renommage IA...');
+    updateAppStateWithAIMetadata(suggestions) {
+        let updatedCount = 0;
         
-        selectedSuggestions.forEach(suggestion => {
-            const oldFilename = suggestion.old_filename;
-            const newFilename = suggestion.new_filename;
+        // Appliquer la vérification des doublons côté client
+        const uniqueSuggestions = this.ensureUniqueAINames(suggestions);
+        
+        uniqueSuggestions.forEach(suggestion => {
+            const { filename, suggested_name } = suggestion;
+
+            console.log(`🔍 [AI-Indexing] Traitement métadonnées pour: ${filename} -> "${suggested_name}"`);
             
-            // Mettre à jour dans le DOM
-            this.updateImageInDOM(oldFilename, newFilename);
+            // Chercher l'image dans les sections
+            let imageFound = false;
             
-            // Mettre à jour dans extractedImages si disponible
-            this.updateExtractedImagesArray(oldFilename, newFilename);
+            // 1. Chercher dans les sections assignées
+            if (window.appState.sections && Array.isArray(window.appState.sections)) {
+                for (const section of window.appState.sections) {
+                    const image = section.images.find(img => img.filename === filename);
+                    if (image) {
+                        image.isAIRenamed = true;
+                        image.aiSuggestedName = suggested_name;
+                        imageFound = true;
+                        updatedCount++;
+                        console.log(`  ✅ [AI-Indexing] Image mise à jour dans section: ${filename}`);
+                        break;
+                    }
+                }
+            }
             
-            // Mettre à jour dans appState.sections si disponible
-            this.updateSectionsArray(oldFilename, newFilename);
+            // 2. Chercher dans les images non assignées si pas encore trouvée
+            if (!imageFound && window.appState.unassignedImages && Array.isArray(window.appState.unassignedImages)) {
+                const image = window.appState.unassignedImages.find(img => img.filename === filename);
+                if (image) {
+                    image.isAIRenamed = true;
+                    image.aiSuggestedName = suggested_name;
+                    imageFound = true;
+                    updatedCount++;
+                    console.log(`  ✅ [AI-Indexing] Image mise à jour dans non-assignées: ${filename}`);
+                }
+            }
+            
+            if (!imageFound) {
+                console.warn(`  ⚠️ [AI-Indexing] Image non trouvée dans appState: ${filename}`);
+                
+                // Debug: Lister toutes les images disponibles
+                console.log('🔍 [DEBUG] Images disponibles dans appState:');
+                console.log(`🔢 [DEBUG] window.appState existe:`, !!window.appState);
+                console.log(`🔢 [DEBUG] sections existe:`, !!window.appState?.sections);
+                console.log(`🔢 [DEBUG] nombre de sections:`, window.appState?.sections?.length || 0);
+                console.log(`🔢 [DEBUG] unassignedImages existe:`, !!window.appState?.unassignedImages);
+                console.log(`🔢 [DEBUG] nombre unassigned:`, window.appState?.unassignedImages?.length || 0);
+                
+                if (window.appState?.sections) {
+                    window.appState.sections.forEach((section, i) => {
+                        console.log(`  Section ${i} (${section.name}): ${section.images?.length || 0} images`);
+                        if (section.images) {
+                            section.images.forEach(img => {
+                                console.log(`    - ${img.filename}`);
+                            });
+                        }
+                    });
+                } else {
+                    console.log('❌ [DEBUG] Pas de sections dans appState');
+                }
+                
+                if (window.appState?.unassignedImages) {
+                    console.log(`  Images non-assignées: ${window.appState.unassignedImages.length}`);
+                    window.appState.unassignedImages.forEach(img => {
+                        console.log(`    - ${img.filename}`);
+                    });
+                } else {
+                    console.log('❌ [DEBUG] Pas d\'images non-assignées dans appState');
+                }
+                
+                // Debug supplémentaire: structure complète
+                console.log('🏗️ [DEBUG] Structure appState complète:');
+                console.log(JSON.stringify(window.appState, null, 2));
+                }
         });
+        
+        console.log(`📊 [AI-Indexing] Bilan mise à jour appState: ${updatedCount}/${uniqueSuggestions.length} images mises à jour`);
+        return updatedCount;
+    }
+
+    /**
+     * 🔍 Assure l'unicité des noms IA côté client
+     * Vérifie les doublons dans toutes les images déjà indexées
+     */
+    ensureUniqueAINames(suggestions) {
+        console.log('🔍 [AI-Indexing] Vérification unicité des noms IA côté client');
+        
+        // Récupérer tous les noms IA existants dans appState
+        const existingAINames = this.getExistingAINames();
+        console.log('📋 Noms IA existants:', existingAINames);
+        
+        const titleCounts = {};
+        
+        // Initialiser les compteurs avec les noms existants
+        existingAINames.forEach(existingName => {
+            const baseName = existingName;
+            let numberSuffix = 1;
+            
+            // Si le nom se termine par " X" où X est un nombre
+            const match = existingName.match(/^(.+)\s(\d+)$/);
+            if (match) {
+                const extractedBaseName = match[1];
+                const extractedNumber = parseInt(match[2]);
+                
+                if (!titleCounts[extractedBaseName] || titleCounts[extractedBaseName] < extractedNumber) {
+                    titleCounts[extractedBaseName] = extractedNumber;
+                }
+            } else {
+                // Nom sans numéro
+                if (!titleCounts[baseName]) {
+                    titleCounts[baseName] = 1;
+                }
+            }
+        });
+        
+        // Traiter les nouvelles suggestions
+        const uniqueSuggestions = suggestions.map(suggestion => {
+            const originalName = suggestion.suggested_name.trim();
+            
+            if (titleCounts[originalName]) {
+                titleCounts[originalName]++;
+                const uniqueName = `${originalName} ${titleCounts[originalName]}`;
+                console.log(`📝 Nom IA rendu unique: "${originalName}" -> "${uniqueName}"`);
+                
+                return {
+                    ...suggestion,
+                    suggested_name: uniqueName
+                };
+            } else {
+                titleCounts[originalName] = 1;
+                return suggestion;
+            }
+        });
+        
+        console.log(`✅ ${uniqueSuggestions.length} noms IA vérifiés pour unicité`);
+        return uniqueSuggestions;
+    }
+
+    /**
+     * 🔍 Récupère tous les noms IA existants dans appState
+     */
+    getExistingAINames() {
+        const existingNames = [];
+        
+        try {
+            if (window.appState && window.appState.sections) {
+                window.appState.sections.forEach(section => {
+                    if (section.images) {
+                        section.images.forEach(image => {
+                            if (image.isAIRenamed && image.aiSuggestedName) {
+                                existingNames.push(image.aiSuggestedName);
+                            }
+                        });
+                    }
+                });
+            }
+            
+            if (window.appState && window.appState.unassignedImages) {
+                window.appState.unassignedImages.forEach(image => {
+                    if (image.isAIRenamed && image.aiSuggestedName) {
+                        existingNames.push(image.aiSuggestedName);
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('❌ Erreur lors de la récupération des noms IA existants:', error);
+        }
+        
+        return existingNames;
+    }
+    
+    /**
+     * 🔄 MÉTHODE DE COMPATIBILITÉ : Applique les renommages (legacy support)
+     * Maintenant redirige vers la nouvelle méthode de métadonnées
+     */
+    async applyRenames(selectedSuggestions) {
+        console.log('🔄 [AI-Indexing] applyRenames appelé - redirection vers métadonnées uniquement');
+        
+        // Transformer le format pour la nouvelle méthode
+        const suggestions = selectedSuggestions.map(rename => ({
+            filename: rename.original_filename,
+            suggested_name: rename.suggested_ia_name
+        }));
+        
+        return this.applyAISuggestions(suggestions);
+                }
+                
+    /**
+     * 🔄 MÉTHODE DE COMPATIBILITÉ : updateInterfaceAfterRename (legacy support)
+     * Maintenant utilise renderSections() global
+     */
+    updateInterfaceAfterRename(updatedResults) {
+        console.log('🔄 [AI-Indexing] updateInterfaceAfterRename appelé - utilisation de renderSections()');
+        
+        // Forcer le nettoyage du cache
+        if (window.imageDisplayManager) {
+            window.imageDisplayManager.clearNameCache();
+        }
+        
+        // Re-rendre complètement l'interface
+        if (typeof renderSections === 'function') {
+            renderSections();
+        }
         
         // Mettre à jour les statistiques
         if (typeof updateStats === 'function') {
             updateStats();
         }
         
-        // Re-rendre les sections pour mettre à jour les noms de fichiers affichés
-        if (typeof renderSections === 'function') {
-            renderSections();
-        }
-        
-        console.log('✅ Interface mise à jour avec succès');
-    }
-    
-    /**
-     * Met à jour une image dans le DOM (adapté de image-editor.js)
-     */
-    updateImageInDOM(originalFilename, newFilename) {
-        console.log(`[AI-Indexing] updateImageInDOM: ${originalFilename} -> ${newFilename}`);
-        
-        const imageCard = document.querySelector(`[data-image-filename="${originalFilename}"]`);
-        if (!imageCard) {
-            console.error(`[AI-Indexing] Image card non trouvée pour: ${originalFilename}`);
-            return false;
-        }
-        
-        try {
-            // 1. Mettre à jour l'attribut data-image-filename de la carte
-            imageCard.setAttribute('data-image-filename', newFilename);
-            
-            // 2. Mettre à jour l'image src avec timestamp
-            const imgElement = imageCard.querySelector('img');
-            if (imgElement) {
-                const baseSrc = imgElement.src.substring(0, imgElement.src.lastIndexOf('/') + 1);
-                const newImageSrc = `${baseSrc}${newFilename}?t=${Date.now()}`;
-                imgElement.src = newImageSrc;
-                imgElement.alt = newFilename;
-                
-                // Mettre à jour le double-clic
-                imgElement.ondblclick = (event) => {
-                    if (typeof showImagePreview === 'function') {
-                        showImagePreview(newFilename, event);
-                    }
-                };
-            }
-            
-            // 3. Mettre à jour l'attribut onclick de la carte pour la sélection
-            imageCard.setAttribute('onclick', `toggleImageSelectionByClick('${newFilename}')`);
-            
-            // 4. Mettre à jour tous les boutons d'action
-            const zoomBtn = imageCard.querySelector('.btn-zoom');
-            if (zoomBtn) {
-                zoomBtn.setAttribute('onclick', `showImagePreview('${newFilename}', event)`);
-            }
-            
-            const assignBtn = imageCard.querySelector('.btn-assign');
-            if (assignBtn) {
-                assignBtn.setAttribute('onclick', `showSectionSelector('${newFilename}', event)`);
-            }
-            
-            const deleteBtn = imageCard.querySelector('.btn-image-delete');
-            if (deleteBtn) {
-                deleteBtn.setAttribute('onclick', `deleteImage('${newFilename}', event)`);
-            }
-            
-            // 5. Mettre à jour le nom du fichier affiché
-            const filenameElement = imageCard.querySelector('.image-filename');
-            if (filenameElement) {
-                filenameElement.textContent = newFilename;
-            }
-            
-            // Ajouter un effet visuel pour montrer que l'image a été renommée
-            imageCard.style.border = '3px solid #3B82F6'; // Bleu pour renommage IA
-            setTimeout(() => {
-                imageCard.style.border = '';
-            }, 3000);
-            
-            console.log(`[AI-Indexing] ✅ Carte mise à jour: ${newFilename}`);
-            return true;
-            
-        } catch (error) {
-            console.error('[AI-Indexing] ❌ Erreur mise à jour DOM:', error);
-            return false;
-        }
-    }
-    
-    /**
-     * Met à jour le tableau extractedImages (adapté de image-editor.js)
-     */
-    updateExtractedImagesArray(originalFilename, newFilename) {
-        if (typeof extractedImages !== 'undefined' && Array.isArray(extractedImages)) {
-            const index = extractedImages.findIndex(img => img.filename === originalFilename);
-            if (index !== -1) {
-                extractedImages[index].filename = newFilename;
-                console.log(`[AI-Indexing] ✅ extractedImages mis à jour: ${originalFilename} -> ${newFilename}`);
-            }
-        }
-    }
-    
-    /**
-     * Met à jour le tableau des sections (spécifique à l'application)
-     */
-    updateSectionsArray(originalFilename, newFilename) {
-        if (typeof appState !== 'undefined' && appState.sections && Array.isArray(appState.sections)) {
-            appState.sections.forEach(section => {
-                if (section.images && Array.isArray(section.images)) {
-                    const imageIndex = section.images.findIndex(img => img.filename === originalFilename);
-                    if (imageIndex !== -1) {
-                        section.images[imageIndex].filename = newFilename;
-                        console.log(`[AI-Indexing] ✅ Section ${section.number} mise à jour: ${originalFilename} -> ${newFilename}`);
-                    }
-                }
-            });
-        }
-        
-        // Mettre à jour aussi dans selectedImages si l'image était sélectionnée
-        if (typeof window.selectedImages !== 'undefined' && window.selectedImages instanceof Set) {
-            if (window.selectedImages.has(originalFilename)) {
-                window.selectedImages.delete(originalFilename);
-                window.selectedImages.add(newFilename);
-                console.log(`[AI-Indexing] ✅ selectedImages mis à jour: ${originalFilename} -> ${newFilename}`);
-            }
-        }
+        console.log('✅ [AI-Indexing] Interface mise à jour via renderSections()');
     }
     
     /**
      * Affiche une notification
      */
     showNotification(message, type = 'info') {
-        // Utiliser le système de notification existant ou créer un simple toast
         const alertClass = {
             'success': 'alert-success',
             'error': 'alert-danger',
@@ -626,9 +457,10 @@ let aiIndexingManager;
 
 document.addEventListener('DOMContentLoaded', function() {
     aiIndexingManager = new AIIndexingManager();
+    window.aiIndexingManager = aiIndexingManager;
 });
 
-// Fonction globale pour démarrer l'auto-indexation (appelée par le bouton)
+// Fonction globale pour démarrer l'auto-indexation
 function startAIIndexing() {
     if (aiIndexingManager) {
         aiIndexingManager.startAutoIndexing();

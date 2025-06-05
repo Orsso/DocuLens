@@ -115,7 +115,7 @@ IMPÉRATIF : Retourne seulement le JSON brut, sans aucune balise markdown, sans 
         }
         
         payload = {
-            "model": "pixtral-12b-2409",  # Modèle Mistral avec support d'images
+            "model": "mistral-small-latest",  # Modèle Mistral avec support d'images
             "messages": [
                 {
                     "role": "system",
@@ -248,61 +248,191 @@ IMPÉRATIF : Retourne seulement le JSON brut, sans aucune balise markdown, sans 
             dict: Dictionnaire {chemin_image: résultat_analyse}
         """
         results = {}
-        total = len(image_paths)
         
         for i, image_path in enumerate(image_paths):
             if progress_callback:
-                progress_callback(i + 1, total, os.path.basename(image_path))
+                progress_callback(i, len(image_paths))
             
             result = self.analyze_image(image_path)
             results[image_path] = result
         
+        if progress_callback:
+            progress_callback(len(image_paths), len(image_paths))
+            
         return results
 
 
 def get_indexer():
     """
-    Factory pour obtenir une instance du service d'indexation
-    
-    Returns:
-        AIImageIndexer: Instance du service
+    Retourne une instance du service d'indexation IA
     """
     return AIImageIndexer()
-
 
 def test_api_connection():
     """
     Teste la connexion à l'API Mistral
-    
-    Returns:
-        bool: True si la connexion fonctionne
     """
-    indexer = get_indexer()
+    indexer = AIImageIndexer()
     if not indexer.is_available():
         return False
     
-    # Test simple avec une requête de santé
-    headers = {
-        "Authorization": f"Bearer {indexer.api_key}",
-        "Content-Type": "application/json"
-    }
-    
+    # Test basique : créer une requête simple
     try:
-        # Test avec une requête simple
-        payload = {
-            "model": "pixtral-12b-2409",
-            "messages": [{"role": "user", "content": "Test"}],
-            "max_tokens": 1
+        # Test avec une image 1x1 pixel pour vérifier la connectivité
+        import requests
+        
+        headers = {
+            "Authorization": f"Bearer {indexer.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Requête de test minimaliste
+        test_payload = {
+            "model": "mistral-small-latest",
+            "messages": [{"role": "user", "content": "Test de connexion."}],
+            "max_tokens": 10
         }
         
         response = requests.post(
-            MISTRAL_API_URL,
+            "https://api.mistral.ai/v1/chat/completions",
             headers=headers,
-            json=payload,
+            json=test_payload,
             timeout=10
         )
         
-        return response.status_code in [200, 429]  # 429 = rate limit mais connexion OK
+        return response.status_code == 200
         
-    except Exception:
-        return False 
+    except Exception as e:
+        logger.error(f"Test de connexion échoué: {e}")
+        return False
+
+def ensure_unique_titles_global(analysis_results, document_name):
+    """
+    S'assure que tous les titres générés par l'IA sont uniques en vérifiant 
+    GLOBALEMENT toutes les images déjà indexées, pas seulement le batch actuel.
+    
+    Args:
+        analysis_results (list): Liste de dictionnaires avec 'filename', 'title', 'tags'
+        document_name (str): Nom du document pour vérifier les titres existants
+        
+    Returns:
+        list: Liste avec les titres rendus uniques
+    """
+    if not analysis_results:
+        return analysis_results
+    
+    # Récupérer tous les noms IA déjà utilisés dans ce document
+    existing_ai_names = get_existing_ai_names(document_name)
+    logger.info(f"🔍 Noms IA existants trouvés: {existing_ai_names}")
+    
+    title_counts = {}
+    
+    # Initialiser les compteurs avec les noms existants
+    for existing_name in existing_ai_names:
+        # Extraire le nom de base (sans numéro de fin)
+        base_name = existing_name
+        number_suffix = 1
+        
+        # Si le nom se termine par " X" où X est un nombre
+        import re
+        match = re.match(r'^(.+)\s(\d+)$', existing_name)
+        if match:
+            base_name = match.group(1)
+            number_suffix = int(match.group(2))
+        
+        # Mettre à jour le compteur pour ce nom de base
+        if base_name not in title_counts:
+            title_counts[base_name] = number_suffix
+        else:
+            title_counts[base_name] = max(title_counts[base_name], number_suffix)
+    
+    unique_results = []
+    
+    for result in analysis_results:
+        if not result or 'title' not in result:
+            unique_results.append(result)
+            continue
+            
+        original_title = result['title'].strip()
+        
+        # Compter les occurrences du titre avec vérification globale
+        if original_title in title_counts:
+            title_counts[original_title] += 1
+            # Ajouter le numéro séquentiel à partir de la 2ème occurrence
+            unique_title = f"{original_title} {title_counts[original_title]}"
+        else:
+            title_counts[original_title] = 1
+            unique_title = original_title
+        
+        # Créer un nouveau résultat avec le titre unique
+        unique_result = result.copy()
+        unique_result['title'] = unique_title
+        unique_results.append(unique_result)
+        
+        logger.info(f"📝 Titre assigné: '{original_title}' -> '{unique_title}' (occurrence #{title_counts[original_title]})")
+    
+    logger.info(f"✅ {len(unique_results)} titres rendus uniques ({len(title_counts)} titres originaux)")
+    return unique_results
+
+def get_existing_ai_names(document_name):
+    """
+    Récupère tous les noms IA existants pour un document donné.
+    
+    IMPORTANT : Dans l'architecture v3.0, les métadonnées IA sont stockées côté client
+    dans window.appState, pas dans un fichier serveur. Cette fonction retourne donc
+    une liste vide et la vérification des doublons se fait côté client.
+    
+    Args:
+        document_name (str): Nom du document
+        
+    Returns:
+        list: Liste vide (vérification côté client)
+    """
+    # Dans l'architecture v3.0, les métadonnées IA sont volatiles et stockées
+    # uniquement côté client. La vérification des doublons doit se faire
+    # côté client lors de l'application des suggestions.
+    logger.info(f"🔍 Architecture v3.0: Vérification doublons IA côté client pour {document_name}")
+    return []
+
+def ensure_unique_titles(analysis_results):
+    """
+    ANCIENNE VERSION - Conservée pour compatibilité descendante
+    S'assure que tous les titres générés par l'IA sont uniques en ajoutant des numéros séquentiels.
+    
+    Args:
+        analysis_results (list): Liste de dictionnaires avec 'filename', 'title', 'tags'
+        
+    Returns:
+        list: Liste avec les titres rendus uniques
+    """
+    if not analysis_results:
+        return analysis_results
+    
+    title_counts = {}
+    unique_results = []
+    
+    for result in analysis_results:
+        if not result or 'title' not in result:
+            unique_results.append(result)
+            continue
+            
+        original_title = result['title'].strip()
+        
+        # Compter les occurrences du titre
+        if original_title in title_counts:
+            title_counts[original_title] += 1
+            # Ajouter le numéro séquentiel à partir de la 2ème occurrence
+            unique_title = f"{original_title} {title_counts[original_title]}"
+        else:
+            title_counts[original_title] = 1
+            unique_title = original_title
+        
+        # Créer un nouveau résultat avec le titre unique
+        unique_result = result.copy()
+        unique_result['title'] = unique_title
+        unique_results.append(unique_result)
+        
+        logger.info(f"📝 Titre assigné: '{original_title}' -> '{unique_title}' (occurrence #{title_counts[original_title]})")
+    
+    logger.info(f"✅ {len(unique_results)} titres rendus uniques ({len(title_counts)} titres originaux)")
+    return unique_results 

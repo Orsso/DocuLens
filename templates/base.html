@@ -302,6 +302,33 @@
         });
     </script>
     
+    <!-- 🚀 IMAGE DISPLAY MANAGER - Nouveau système unifié (SESSION 1) -->
+    <script src="{{ url_for('static', filename='js/image-display-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='../test_image_display_manager.js') }}"></script>
+    
+    <script>
+        // 🎯 Initialiser le nouveau système en parallèle
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.ImageDisplayManager) {
+                // Créer instance globale
+                window.imageDisplayManager = new ImageDisplayManager();
+                console.log('🚀 [SESSION 1] ImageDisplayManager initialisé et prêt !');
+                
+                // Auto-diagnostic si environnement de dev
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                    console.log('🔧 Mode dev détecté - Diagnostic automatique dans 2s...');
+                    setTimeout(() => {
+                        if (window.quickDiagnose) {
+                            window.quickDiagnose();
+                        }
+                    }, 2000);
+                }
+            } else {
+                console.error('❌ [SESSION 1] ImageDisplayManager non chargé !');
+            }
+        });
+    </script>
+    
     {% block scripts %}{% endblock %}
 </body>
 </html> 

@@ -26,6 +26,8 @@
     height: 220px;
     display: flex;
     flex-direction: column;
+    /* Force la cohérence entre navigateurs */
+    box-sizing: border-box;
 }
 
 /* Animation fluide pour le repositionnement pendant le drag */
@@ -233,6 +235,9 @@
     height: 150px;
     overflow: hidden;
     flex: 0 0 150px;
+    /* Assure la cohérence entre navigateurs */
+    box-sizing: border-box;
+    display: flex;
 }
 
 .image-preview {
@@ -247,7 +252,9 @@
 
 .image-info {
     position: relative;
-    flex: 1;
+    /* Calcul explicite pour éviter les différences entre navigateurs */
+    height: calc(220px - 150px - 2px); /* Hauteur totale - image - bordures */
+    flex: 0 0 auto;
     background: rgba(15, 23, 42, 0.8);
     border-top: 1px solid rgba(59, 130, 246, 0.2);
     color: white;
@@ -257,7 +264,9 @@
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    min-height: 70px;
+    box-sizing: border-box;
+    /* Fallback pour navigateurs plus anciens */
+    min-height: 68px;
 }
 
 .image-filename {
@@ -268,6 +277,8 @@
     white-space: nowrap;
     color: rgba(255, 255, 255, 0.95);
     line-height: 1.2;
+    max-width: 100%;
+    word-break: break-word;
 }
 
 .image-page {
@@ -384,4 +395,45 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+/* Badge IA pour les images indexées par l'intelligence artificielle */
+.ai-badge {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+    color: white;
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    z-index: 5;
+    opacity: 0.9;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.image-card:hover .ai-badge {
+    opacity: 1;
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+/* Badge IA dans la zone image-info */
+.image-info .ai-badge {
+    position: relative;
+    top: auto;
+    right: auto;
+    margin-top: 4px;
+    font-size: 0.65rem;
+    background: rgba(59, 130, 246, 0.8);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    align-self: flex-start;
 } 

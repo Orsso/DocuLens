@@ -14,6 +14,36 @@
     <link href="{{ url_for('static', filename='css/results-modals.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/image-editor.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/ai-indexing.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/unified-modals.css') }}" rel="stylesheet">
+
+    <!-- SESSION 4: Styles pour le badge de position -->
+    <style>
+        .image-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-top: 4px;
+            font-size: 0.75rem;
+            color: var(--frost-text-secondary);
+        }
+
+        .image-number-badge {
+            background-color: rgba(var(--frost-accent-blue-rgb), 0.8);
+            backdrop-filter: blur(4px);
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            line-height: 1;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .image-info {
+            height: 60px; /* Un peu plus de hauteur pour le footer */
+        }
+    </style>
 </head>
 <body>
     <div class="container-fluid px-4 py-3">
@@ -80,30 +110,7 @@
                         </div>
                     </div>
                     
-                    <!-- Tips Box - Rétractable -->
-                    <div class="tips-box">
-                        <div class="tips-header" onclick="toggleTips()">
-                            <div class="tips-title">
-                                <i class="fas fa-lightbulb"></i>
-                                <span>Conseils d'utilisation</span>
-                            </div>
-                            <i class="fas fa-chevron-down tips-chevron" id="tipsChevron"></i>
-                        </div>
-                        <div class="tips-content" id="tipsContent">
-                            <div class="tip-item">
-                                <i class="fas fa-plus-circle"></i>
-                                <span>Utilisez le bouton violet sur une section pour créer une sous-section</span>
-                            </div>
-                            <div class="tip-item">
-                                <i class="fas fa-edit"></i>
-                                <span>Cliquez sur la boîte bleue du numéro pour modifier la nomenclature (ex: ANNEXE-A)</span>
-                            </div>
-                            <div class="tip-item">
-                                <i class="fas fa-arrows-alt"></i>
-                                <span>Glissez-déposez les sections par leur boîte bleue pour les réorganiser</span>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
             </div>
 
@@ -199,42 +206,27 @@
         </div>
     </div>
 
-    <!-- Debug Button -->
-    <div class="debug-button" onclick="showDebugModal()" title="Diagnostic du système">
-        <i class="fas fa-bug"></i>
+    <!-- Help Button -->
+    <div class="help-button" onclick="showHelpModal()" title="Centre d'aide">
+        <i class="fas fa-question-circle"></i>
     </div>
 
-    <!-- Debug Modal -->
-    <div class="debug-modal" id="debugModal">
-        <div class="debug-modal-content">
-            <div class="debug-modal-header">
-                <div class="debug-modal-title">
-                    <i class="fas fa-bug"></i>
-                    <span>Diagnostic du Système</span>
-                </div>
-                <button class="debug-modal-close" onclick="closeDebugModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="debug-modal-body" id="debugModalBody">
-                <!-- Le contenu de debug sera inséré ici -->
-            </div>
-        </div>
-    </div>
+
 
 
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="{{ url_for('static', filename='js/unified-modals.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ai-indexing.js') }}"></script>
     
     <script type="application/json" id="sectionsData">{{ result.sections | tojson | safe }}</script>
     <script type="application/json" id="imagesData">{{ result.extracted_files | tojson | safe }}</script>
     
     <script>
-        // État global de l'application
-        let appState = {
+        // État global de l'application - ARCHITECTURE V3.0 : Global window scope UNIQUEMENT
+        window.appState = {
             sections: [],
             unassignedImages: [],
             prefix: 'CRL',
@@ -312,7 +304,7 @@
                     
                     if (level > 1 && detectedSection.number.includes('.')) {
                         const parentNumber = detectedSection.number.split('.')[0];
-                        const parentSection = appState.sections.find(s => 
+                        const parentSection = window.appState.sections.find(s => 
                             s.sectionNumber == parentNumber || s.nomenclatureNumber == parentNumber
                         );
                         if (parentSection) {
@@ -351,7 +343,7 @@
                 console.log('⚠️  Aucune section détectée, création d\'une section par défaut');
                 if (extractedImages.length > 0) {
                     addNewSection('Section 1');
-                    appState.sections[0].images = [...extractedImages];
+                    window.appState.sections[0].images = [...extractedImages];
                     renderSections();
                     updateUnassignedImages();
                 }
@@ -367,12 +359,12 @@
                 totalExtracted: extractedImages.length,
                 sections: [],
                 totalAssigned: 0,
-                unassigned: appState.unassignedImages.length,
+                unassigned: window.appState.unassignedImages.length,
                 problems: []
             };
             
             // Analyser chaque section
-            appState.sections.forEach(section => {
+            window.appState.sections.forEach(section => {
                 const sectionInfo = {
                     number: section.sectionNumber,
                     nomenclature: section.nomenclatureNumber,
@@ -395,10 +387,10 @@
                 
                 // Trouver les images perdues
                 const assignedFilenames = new Set();
-                appState.sections.forEach(section => {
+                window.appState.sections.forEach(section => {
                     section.images.forEach(img => assignedFilenames.add(img.filename));
                 });
-                appState.unassignedImages.forEach(img => assignedFilenames.add(img.filename));
+                window.appState.unassignedImages.forEach(img => assignedFilenames.add(img.filename));
                 
                 const lostImages = extractedImages.filter(img => !assignedFilenames.has(img.filename));
                 debugInfo.problems.push({
@@ -412,114 +404,112 @@
             return debugInfo;
         }
         
-        function showDebugModal() {
-            const modal = document.getElementById('debugModal');
-            const body = document.getElementById('debugModalBody');
+        // Fonction pour générer le contenu de debug (utilisée par HelpModal)
+        function generateDebugInfo() {
+            let html = '';
             
-            let html = '<div class="debug-section">';
-            html += '<div class="debug-section-title">État de l\'Application</div>';
-            html += `<div class="debug-info">Sections: ${appState.sections.length}</div>`;
-            html += `<div class="debug-info">Images totales: ${extractedImages.length}</div>`;
-            html += `<div class="debug-info">Images non assignées: ${appState.unassignedImages.length}</div>`;
+            // Section État Global
+            html += '<div class="debug-section">';
+            html += '<div class="debug-section-title">État Global de l\'Application</div>';
+            html += `<div class="debug-info">Document: ${window.appState.documentName}</div>`;
+            html += `<div class="debug-info">Sections: ${window.appState.sections.length}</div>`;
+            html += `<div class="debug-info">Images non attribuées: ${window.appState.unassignedImages.length}</div>`;
             html += `<div class="debug-info">Images sélectionnées: ${selectedImages.size}</div>`;
+            html += `<div class="debug-info">Format d'export: ${window.appState.format}</div>`;
+            html += `<div class="debug-info">Préfixe: ${window.appState.prefix}</div>`;
             html += '</div>';
             
-            // Diagnostic spécial pour les duplications
+            // Section Images Extraites
             html += '<div class="debug-section">';
-            html += '<div class="debug-section-title">Diagnostic Duplication</div>';
+            html += '<div class="debug-section-title">Images Extraites du Serveur</div>';
+            html += `<div class="debug-info">Total extractedImages: ${extractedImages.length}</div>`;
             
-            // Compter les doublons dans extractedImages
-            const filenameCount = {};
-            extractedImages.forEach(img => {
-                filenameCount[img.filename] = (filenameCount[img.filename] || 0) + 1;
-            });
-            const duplicatesInExtracted = Object.entries(filenameCount).filter(([filename, count]) => count > 1);
-            
-            html += `<div class="debug-info ${duplicatesInExtracted.length > 0 ? 'error' : 'success'}">`;
-            html += `Doublons dans extractedImages: ${duplicatesInExtracted.length}</div>`;
-            if (duplicatesInExtracted.length > 0) {
-                duplicatesInExtracted.forEach(([filename, count]) => {
-                    html += `<div class="debug-info error">  • ${filename}: ${count} occurrences</div>`;
+            if (extractedImages.length > 0) {
+                html += `<div class="debug-info">Première image: ${extractedImages[0].filename}</div>`;
+                html += `<div class="debug-info">Dernière image: ${extractedImages[extractedImages.length - 1].filename}</div>`;
+                
+                // Vérifier les doublons dans extractedImages
+                const filenamesCount = {};
+                extractedImages.forEach(img => {
+                    filenamesCount[img.filename] = (filenamesCount[img.filename] || 0) + 1;
                 });
-            }
-            
-            // Compter les doublons dans le DOM
-            const domFilenames = {};
-            document.querySelectorAll('[data-image-filename]').forEach(card => {
-                const filename = card.getAttribute('data-image-filename');
-                domFilenames[filename] = (domFilenames[filename] || 0) + 1;
-            });
-            const duplicatesInDOM = Object.entries(domFilenames).filter(([filename, count]) => count > 1);
-            
-            html += `<div class="debug-info ${duplicatesInDOM.length > 0 ? 'error' : 'success'}">`;
-            html += `Doublons dans le DOM: ${duplicatesInDOM.length}</div>`;
-            if (duplicatesInDOM.length > 0) {
-                duplicatesInDOM.forEach(([filename, count]) => {
-                    html += `<div class="debug-info error">  • ${filename}: ${count} cartes</div>`;
-                        });
-                    }
-            
-            // Compter les doublons dans les sections
-            const sectionFilenames = {};
-            appState.sections.forEach(section => {
-                section.images.forEach(img => {
-                    sectionFilenames[img.filename] = (sectionFilenames[img.filename] || 0) + 1;
-                });
-            });
-            const duplicatesInSections = Object.entries(sectionFilenames).filter(([filename, count]) => count > 1);
-            
-            html += `<div class="debug-info ${duplicatesInSections.length > 0 ? 'error' : 'success'}">`;
-            html += `Doublons dans les sections: ${duplicatesInSections.length}</div>`;
-            if (duplicatesInSections.length > 0) {
-                duplicatesInSections.forEach(([filename, count]) => {
-                    html += `<div class="debug-info error">  • ${filename}: ${count} références</div>`;
-                });
+                const duplicatesInExtracted = Object.entries(filenamesCount).filter(([filename, count]) => count > 1);
+                
+                html += `<div class="debug-info ${duplicatesInExtracted.length > 0 ? 'error' : 'success'}">`;
+                html += `Doublons dans extractedImages: ${duplicatesInExtracted.length}</div>`;
+                if (duplicatesInExtracted.length > 0) {
+                    duplicatesInExtracted.forEach(([filename, count]) => {
+                        html += `<div class="debug-info error">  • ${filename}: ${count} occurrences</div>`;
+                    });
+                }
             }
             
             html += '</div>';
 
-            // Section Console des logs
+            // Section DOM
             html += '<div class="debug-section">';
+            html += '<div class="debug-section-title">État du DOM</div>';
+            
+            const allImageCards = document.querySelectorAll('.image-card');
+            const selectedCards = document.querySelectorAll('.image-card.selected');
+            const unassignedCards = document.querySelectorAll('#unassignedGrid .image-card');
+            
+            html += `<div class="debug-info">Cartes d'images totales: ${allImageCards.length}</div>`;
+            html += `<div class="debug-info">Cartes sélectionnées: ${selectedCards.length}</div>`;
+            html += `<div class="debug-info">Cartes non attribuées: ${unassignedCards.length}</div>`;
+            
+            // Analyser les incohérences de sélection
+            const domSelectedFilenames = Array.from(selectedCards).map(card => card.getAttribute('data-image-filename'));
+            const setSelectedFilenames = Array.from(selectedImages);
+            const missingInSet = domSelectedFilenames.filter(f => !selectedImages.has(f));
+            const missingInDOM = setSelectedFilenames.filter(f => !domSelectedFilenames.includes(f));
+            
+            html += `<div class="debug-info ${missingInSet.length > 0 || missingInDOM.length > 0 ? 'error' : 'success'}">`;
+            html += `Incohérences de sélection: ${missingInSet.length + missingInDOM.length}</div>`;
+            if (missingInSet.length > 0) {
+                html += `<div class="debug-info error">Sélectionnées dans DOM mais pas dans Set: ${missingInSet.join(', ')}</div>`;
+            }
+            if (missingInDOM.length > 0) {
+                html += `<div class="debug-info error">Sélectionnées dans Set mais pas dans DOM: ${missingInDOM.join(', ')}</div>`;
+            }
+            
+            // Section Console des logs
+            html += '<div class="debug-section" style="margin-top: 1.5rem;">';
             html += '<div class="debug-section-title">Console des Logs</div>';
-            html += '<div style="max-height: 300px; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 0.5rem; font-family: monospace; font-size: 0.75rem;">';
+            html += '<div style="max-height: 300px; overflow-y: auto; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--frost-border); border-radius: 8px; padding: 0.75rem; font-family: monospace; font-size: 0.8rem;">';
             
             if (appLogs && appLogs.length > 0) {
                 // Afficher les 20 derniers logs
                 const recentLogs = appLogs.slice(0, 20);
                 recentLogs.forEach(log => {
-                    const typeColor = log.type === 'error' ? '#ff6b6b' : 
-                                     log.type === 'info' ? '#4dabf7' : 
-                                     log.type === 'debug' ? '#69db7c' : '#ffd43b';
+                    const typeColor = log.type === 'error' ? '#ef4444' : 
+                                     log.type === 'info' ? '#3b82f6' : 
+                                     log.type === 'debug' ? '#10b981' : '#f59e0b';
                     
-                    html += `<div style="color: ${typeColor}; margin-bottom: 0.25rem; border-bottom: 1px solid #333; padding-bottom: 0.25rem;">`;
-                    html += `<span style="color: #888;">[${log.time}]</span> `;
+                    html += `<div style="color: ${typeColor}; margin-bottom: 0.5rem; border-bottom: 1px solid var(--frost-border); padding-bottom: 0.25rem;">`;
+                    html += `<span style="color: var(--frost-text-secondary);">[${log.time}]</span> `;
                     html += `<span style="color: ${typeColor}; font-weight: bold;">${log.type.toUpperCase()}:</span> `;
-                    html += `<span style="color: #fff;">${log.message}</span>`;
+                    html += `<span style="color: var(--frost-text-primary);">${log.message}</span>`;
                     if (log.data) {
-                        html += `<br/><span style="color: #aaa; margin-left: 2rem;">${JSON.stringify(log.data)}</span>`;
+                        html += `<br/><span style="color: var(--frost-text-secondary); margin-left: 2rem;">${JSON.stringify(log.data)}</span>`;
                     }
                     html += '</div>';
                 });
                 
-                html += `<div style="color: #888; text-align: center; margin-top: 0.5rem; font-style: italic;">`;
+                html += `<div style="color: var(--frost-text-secondary); text-align: center; margin-top: 0.5rem; font-style: italic;">`;
                 html += `Affichage des 20 derniers logs sur ${appLogs.length} total`;
                 html += '</div>';
             } else {
-                html += '<div style="color: #888; text-align: center; padding: 1rem;">Aucun log disponible</div>';
+                html += '<div style="color: var(--frost-text-secondary); text-align: center; padding: 1rem;">Aucun log disponible</div>';
             }
             
             html += '</div>';
-            html += '<div style="margin-top: 0.5rem;">';
-            html += '<button class="btn btn-secondary btn-sm" onclick="clearLogs(); showDebugModal();">Vider les logs</button>';
+            html += '<div style="margin-top: 0.75rem; text-align: center;">';
+            html += '<button class="frost-btn secondary" onclick="clearLogs(); helpModal.loadDebugContent();">Vider les logs</button>';
             html += '</div>';
             html += '</div>';
 
-            body.innerHTML = html;
-            modal.style.display = 'flex';
-        }
-        
-        function closeDebugModal() {
-            document.getElementById('debugModal').style.display = 'none';
+            return html;
         }
 
         // Style pour les éléments de debug
@@ -555,7 +545,7 @@
             let imageToMove = null;
             
             // Chercher dans les sections
-            for (let section of appState.sections) {
+            for (let section of window.appState.sections) {
                 const imageIndex = section.images.findIndex(img => img.filename === filename);
                 if (imageIndex !== -1) {
                     imageToMove = section.images.splice(imageIndex, 1)[0];
@@ -566,7 +556,7 @@
             // Si l'image n'était pas dans une section, elle était déjà dans les non assignées
             if (imageToMove) {
                 // Remettre dans les images non assignées
-                appState.unassignedImages.push(imageToMove);
+                window.appState.unassignedImages.push(imageToMove);
                 
                 // Désélectionner l'image si elle était sélectionnée
                 selectedImages.delete(filename);
@@ -697,20 +687,13 @@
             logInfo('=== FIN DIAGNOSTIC ===');
         }
         
-        // Fermer la modal debug en cliquant en dehors
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('debugModal').addEventListener('click', function(e) {
-                if (e.target === this) {
-                    closeDebugModal();
-                }
-            });
-        });
+
 
         function setupEventListeners() {
             // Configuration inputs
             document.getElementById('prefixInput').addEventListener('input', (e) => {
-                appState.prefix = e.target.value || 'CRL';
-                updateAllFilenames();
+                window.appState.prefix = e.target.value || 'CRL';
+                renderSections(); // SESSION 3: updateAllFilenames() supprimée
             });
             
             document.getElementById('documentNameInput').addEventListener('input', (e) => {
@@ -720,8 +703,8 @@
             });
             
             document.getElementById('formatSelect').addEventListener('change', (e) => {
-                appState.format = e.target.value;
-                updateAllFilenames();
+                window.appState.format = e.target.value;
+                renderSections(); // SESSION 3: updateAllFilenames() supprimée
             });
         }
         
@@ -763,21 +746,48 @@
             console.log('📊 Images chargées:', extractedImages.length, 'images');
             console.log('📊 Première image:', extractedImages[0]);
             
-            appState.unassignedImages = []; // Laisser vide, sera calculé correctement après l'initialisation
+            window.appState.unassignedImages = []; // Laisser vide, sera calculé correctement après l'initialisation
             initializeApp();
             updateStats();
         }
 
         function addNewSection(name = null, parentSectionId = null, afterSectionId = null) {
             try {
+                // Sécurité : s'assurer que window.appState et ses propriétés existent
+                if (!window.appState) {
+                    console.warn('⚠️  window.appState n\'existe pas, initialisation complète...');
+                    // Récupérer le vrai nom du document depuis l'input ou utiliser un fallback
+                    const realDocumentName = document.getElementById('documentNameInput')?.value || 'BEO005';
+                    window.appState = {
+                        sections: [],
+                        unassignedImages: [],
+                        prefix: 'CRL',
+                        documentName: realDocumentName,
+                        format: 'jpg',
+                        nextSectionId: 1,
+                        maxSubsectionId: {}
+                    };
+                } else {
+                    // Vérifier et initialiser les propriétés manquantes
+                    if (!window.appState.sections) {
+                        window.appState.sections = [];
+                    }
+                    if (!window.appState.nextSectionId) {
+                        window.appState.nextSectionId = 1;
+                    }
+                    if (!window.appState.maxSubsectionId) {
+                        window.appState.maxSubsectionId = {};
+                    }
+                }
+                
                 let sectionNumber, sectionName, level, nomenclatureNumber;
-                let insertIndex = appState.sections.length; // Par défaut, à la fin
+                let insertIndex = window.appState.sections.length; // Par défaut, à la fin
                 
                 logInfo(`Ajout nouvelle section - name: "${name}", parent: ${parentSectionId}, after: ${afterSectionId}`);
             
             if (parentSectionId) {
                 // Créer une sous-section ou sous-sous-section
-                const parentSection = appState.sections.find(s => s.id === parentSectionId);
+                const parentSection = window.appState.sections.find(s => s.id === parentSectionId);
                 if (!parentSection) {
                     console.error(`❌ Section parent ${parentSectionId} introuvable`);
                     return;
@@ -786,40 +796,40 @@
                 const parentNumber = parentSection.sectionNumber || parentSection.number;
                 
                 // Initialiser le compteur de sous-sections pour cette section parent
-                if (!appState.maxSubsectionId[parentNumber]) {
-                    appState.maxSubsectionId[parentNumber] = 1;
+                if (!window.appState.maxSubsectionId[parentNumber]) {
+                    window.appState.maxSubsectionId[parentNumber] = 1;
                 } else {
-                    appState.maxSubsectionId[parentNumber]++;
+                    window.appState.maxSubsectionId[parentNumber]++;
                 }
                 
-                sectionNumber = `${parentNumber}.${appState.maxSubsectionId[parentNumber]}`;
+                sectionNumber = `${parentNumber}.${window.appState.maxSubsectionId[parentNumber]}`;
                 level = (parentSection.level || 1) + 1;
-                nomenclatureNumber = sectionNumber; // Par défaut, même que le numéro hiérarchique
+                nomenclatureNumber = sectionNumber; // Par défaut, même que le numéro de section
                 
                 sectionName = name || `Section ${sectionNumber}`;
                 
                 // Position pour sous-section : après le parent et ses sous-sections existantes
-                const parentIndex = appState.sections.findIndex(s => s.id === parentSectionId);
+                const parentIndex = window.appState.sections.findIndex(s => s.id === parentSectionId);
                 insertIndex = parentIndex + 1;
                 
                 // Trouver la position après toutes les sous-sections existantes du parent
-                while (insertIndex < appState.sections.length && 
-                       appState.sections[insertIndex].parentId === parentSectionId) {
+                while (insertIndex < window.appState.sections.length && 
+                       window.appState.sections[insertIndex].parentId === parentSectionId) {
                     insertIndex++;
                 }
             } else if (afterSectionId) {
                 // Créer une section principale après une section spécifique
-                const afterSection = appState.sections.find(s => s.id === afterSectionId);
+                const afterSection = window.appState.sections.find(s => s.id === afterSectionId);
                 if (afterSection) {
-                    const afterIndex = appState.sections.findIndex(s => s.id === afterSectionId);
+                    const afterIndex = window.appState.sections.findIndex(s => s.id === afterSectionId);
                     insertIndex = afterIndex + 1;
                     
                     // Si la section après laquelle on insère a des sous-sections, insérer après toutes ses sous-sections
-                    while (insertIndex < appState.sections.length && 
-                           (appState.sections[insertIndex].parentId === afterSectionId ||
-                            (appState.sections[insertIndex].level > 1 && 
-                             appState.sections[insertIndex].sectionNumber && 
-                             appState.sections[insertIndex].sectionNumber.startsWith(afterSection.sectionNumber + '.')))) {
+                    while (insertIndex < window.appState.sections.length && 
+                           (window.appState.sections[insertIndex].parentId === afterSectionId ||
+                            (window.appState.sections[insertIndex].level > 1 && 
+                             window.appState.sections[insertIndex].sectionNumber && 
+                             window.appState.sections[insertIndex].sectionNumber.startsWith(afterSection.sectionNumber + '.')))) {
                         insertIndex++;
                     }
                 }
@@ -830,7 +840,7 @@
                 nomenclatureNumber = "temp";
             } else {
                 // Créer une section principale à la fin ou lors de l'initialisation
-                const mainSections = appState.sections.filter(s => (s.level || 1) === 1);
+                const mainSections = window.appState.sections.filter(s => (s.level || 1) === 1);
                 if (name && name.includes('Section ') && !isNaN(parseInt(name.split(' ')[1]))) {
                     // Si un nom avec numéro est fourni, l'utiliser
                     const providedNumber = parseInt(name.split(' ')[1]);
@@ -844,7 +854,7 @@
             }
             
             const newSection = {
-                id: appState.nextSectionId++,
+                id: window.appState.nextSectionId++,
                 name: sectionName,
                 number: insertIndex + 1,                    // Position dans la liste (sera mise à jour)
                 sectionNumber: sectionNumber,               // Numéro hiérarchique (sera mis à jour si nécessaire)
@@ -857,7 +867,7 @@
             console.log(`  📝 Section créée: "${newSection.name}" (n°${newSection.sectionNumber}, niveau ${newSection.level})`);
             
             // Insérer la section à la position calculée
-            appState.sections.splice(insertIndex, 0, newSection);
+            window.appState.sections.splice(insertIndex, 0, newSection);
             
             // Ne pas renumbéroter automatiquement lors de l'initialisation pour préserver les numéros détectés
             if (!name || !name.includes('Section ')) {
@@ -880,7 +890,7 @@
              let mainSectionCount = 1;
              const subsectionCounters = {};
              
-             appState.sections.forEach((section, index) => {
+             window.appState.sections.forEach((section, index) => {
                  section.number = index + 1; // Position dans la liste
                  
                  if (section.level === 1) {
@@ -905,7 +915,7 @@
                      subsectionCounters[mainSectionCount] = 1;
                      mainSectionCount++;
                  } else if (section.level === 2 && section.parentId) {
-                     const parentSection = appState.sections.find(s => s.id === section.parentId);
+                     const parentSection = window.appState.sections.find(s => s.id === section.parentId);
                      if (parentSection) {
                          const parentNumber = parentSection.sectionNumber;
                          const oldSectionNumber = section.sectionNumber;
@@ -925,7 +935,7 @@
                          subsectionCounters[section.sectionNumber] = 1;
                      }
                  } else if (section.level === 3 && section.parentId) {
-                     const parentSection = appState.sections.find(s => s.id === section.parentId);
+                     const parentSection = window.appState.sections.find(s => s.id === section.parentId);
                      if (parentSection) {
                          const parentNumber = parentSection.sectionNumber;
                          const oldSectionNumber = section.sectionNumber;
@@ -958,13 +968,13 @@
         }
 
         function deleteSection(sectionId) {
-            const sectionIndex = appState.sections.findIndex(s => s.id === sectionId);
+            const sectionIndex = window.appState.sections.findIndex(s => s.id === sectionId);
             if (sectionIndex !== -1) {
-                const sectionToDelete = appState.sections[sectionIndex];
+                const sectionToDelete = window.appState.sections[sectionIndex];
                 
                 if (sectionToDelete.level === 1) {
                     // Section principale : supprimer aussi toutes les sous-sections et leurs descendants
-                    const descendants = getAllDescendantSections(sectionId, appState.sections);
+                    const descendants = getAllDescendantSections(sectionId, window.appState.sections);
                     const sectionsToDelete = [sectionToDelete, ...descendants];
                 
                     // Collecter toutes les images à animer vers unassigned
@@ -981,31 +991,31 @@
                         // Supprimer les sections après un délai pour que l'animation démarre
                         setTimeout(() => {
                 sectionsToDelete.forEach(section => {
-                    const index = appState.sections.findIndex(s => s.id === section.id);
+                    const index = window.appState.sections.findIndex(s => s.id === section.id);
                     if (index !== -1) {
-                        appState.sections.splice(index, 1);
+                        window.appState.sections.splice(index, 1);
                     }
                 });
                         }, 200);
                     } else {
                         // Pas d'images, suppression directe
                         sectionsToDelete.forEach(section => {
-                            const index = appState.sections.findIndex(s => s.id === section.id);
+                            const index = window.appState.sections.findIndex(s => s.id === section.id);
                             if (index !== -1) {
-                                appState.sections.splice(index, 1);
+                                window.appState.sections.splice(index, 1);
                             }
                         });
                         finalizeSectionDeletion();
                     }
                 } else {
                     // Sous-section : les images remontent dans la section parente
-                    let parentSection = appState.sections.find(s => s.id === sectionToDelete.parentId);
+                    let parentSection = window.appState.sections.find(s => s.id === sectionToDelete.parentId);
                     
                     // Si pas de parentId, essayer de trouver par hiérarchie numérique
                     if (!parentSection && sectionToDelete.sectionNumber) {
                         const parentNumber = sectionToDelete.sectionNumber.split('.').slice(0, -1).join('.');
                         if (parentNumber) {
-                            parentSection = appState.sections.find(s => 
+                            parentSection = window.appState.sections.find(s => 
                                 (s.sectionNumber === parentNumber || s.nomenclatureNumber === parentNumber) && 
                                 s.level < sectionToDelete.level
                             );
@@ -1028,7 +1038,7 @@
                         
                         // Supprimer la sous-section après un délai
                         setTimeout(() => {
-                            appState.sections.splice(sectionIndex, 1);
+                            window.appState.sections.splice(sectionIndex, 1);
                             finalizeSectionDeletion();
                         }, 200);
                     } else if (sectionToDelete.images.length > 0) {
@@ -1040,11 +1050,11 @@
                         
                         // Supprimer la sous-section après un délai
                         setTimeout(() => {
-                            appState.sections.splice(sectionIndex, 1);
+                            window.appState.sections.splice(sectionIndex, 1);
                         }, 200);
                     } else {
                         // Pas d'images, suppression directe
-                        appState.sections.splice(sectionIndex, 1);
+                        window.appState.sections.splice(sectionIndex, 1);
                         finalizeSectionDeletion();
                     }
                 }
@@ -1078,10 +1088,10 @@
         function finalizeSectionDeletion() {
                 // Renumbéroter les sections (automatique)
                 renumberSections(true);
-                renderSections();
-            updateUnassignedImages();
-                updateStats();
-                updateAllFilenames();
+                            renderSections();
+        updateUnassignedImages();
+            updateStats();
+            // SESSION 3: updateAllFilenames() supprimée
         }
 
                 function cleanupTooltips() {
@@ -1102,10 +1112,22 @@
         function renderSections() {
             logInfo('[DIAGNOSTIC] renderSections appelée - début du rendu');
             
+            // Sécurité : vérifier que window.appState existe
+            if (!window.appState || !window.appState.sections) {
+                console.warn('⚠️  window.appState.sections n\'existe pas dans renderSections');
+                return;
+            }
+            
+            // 🎯 v3.0: VIDER le cache pour forcer la régénération des noms
+            if (window.imageDisplayManager) {
+                window.imageDisplayManager.clearNameCache();
+                logInfo('[v3.0] Cache ImageDisplayManager vidé pour régénération');
+            }
+            
             const container = document.getElementById('sectionsContainer');
             const emptyState = document.getElementById('emptyState');
             
-            if (appState.sections.length === 0) {
+            if (window.appState.sections.length === 0) {
                 container.innerHTML = '';
                 emptyState.style.display = 'block';
                 logInfo('[DIAGNOSTIC] Aucune section, affichage de l\'état vide');
@@ -1118,7 +1140,7 @@
             const imageCountBeforeRender = document.querySelectorAll('[data-image-filename]').length;
             
             // Organiser les sections par hiérarchie
-            const organizedHTML = buildHierarchicalSections(appState.sections);
+            const organizedHTML = buildHierarchicalSections(window.appState.sections);
             container.innerHTML = organizedHTML;
             
             // Compter les images après le rendu
@@ -1305,14 +1327,16 @@
         }
 
         function renderImageCard(image, sectionNumber, imageNumber) {
-            const filename = generateFilename(sectionNumber, imageNumber);
             const isSelected = selectedImages.has(image.filename);
             
-            // Log détaillé pour le diagnostic
-            logDebug(`Rendu image: ${image.filename} | Généré: ${filename} | Sélectionnée: ${isSelected}`);
+            // Affichage simple et direct des noms IA
+            let displayName = '';
             
-            if (isSelected) {
-                logDebug(`✅ Image sélectionnée à rendre: ${image.filename} dans section ${sectionNumber}`);
+            // Si l'image a été renommée par IA, afficher le nom IA
+            if (image.isAIRenamed && image.aiSuggestedName) {
+                displayName = image.aiSuggestedName;
+            } else {
+                displayName = ''; // Vide pour les images normales
             }
             
             return `
@@ -1320,8 +1344,8 @@
                      data-image-filename="${image.filename}" 
                      onclick="toggleImageSelectionByClick('${image.filename}')"
                      ondblclick="handleImageDoubleClick('${image.filename}', event)">
-                    <img src="/image/${appState.documentName}/${image.filename}" 
-                         alt="${image.filename}" class="image-preview" 
+                    <img src="/image/${window.appState.documentName}/${image.filename}" 
+                         alt="${displayName}" class="image-preview" 
                          onerror="this.style.display='none'">
                     <div class="image-overlay">
                         <button class="btn-zoom" onclick="showImagePreview('${image.filename}', event)" 
@@ -1339,8 +1363,12 @@
                         </button>
                     </div>
                     <div class="image-info">
-                        <div class="image-filename">${image.filename}</div>
-                        <div class="image-page">Page ${image.page}</div>
+                        <div class="image-filename">${displayName ? displayName : '&nbsp;'}</div>
+                        <div class="image-footer">
+                            <span class="image-page">Page ${image.page}</span>
+                            <span class="image-number-badge" title="Position dans la section">${imageNumber}</span>
+                        </div>
+
                     </div>
                 </div>
             `;
@@ -1477,7 +1505,7 @@
                         renumberSections(true);
                         renderSections();
                         updateStats();
-                        updateAllFilenames();
+                        // SESSION 3: updateAllFilenames() supprimée
                     }
                 });
             }
@@ -1498,7 +1526,7 @@
                         renumberSections(true);
                         renderSections();
                         updateStats();
-                        updateAllFilenames();
+                        // SESSION 3: updateAllFilenames() supprimée
                     }
                 });
             });
@@ -1513,7 +1541,7 @@
                 const mainSectionEl = wrapper.querySelector('.main-section, .main-section-with-subs');
                 if (mainSectionEl) {
                     const mainSectionId = parseInt(mainSectionEl.dataset.sectionId);
-                    const mainSection = appState.sections.find(s => s.id === mainSectionId);
+                    const mainSection = window.appState.sections.find(s => s.id === mainSectionId);
                     if (mainSection) {
                         newOrder.push(mainSection);
                     }
@@ -1524,7 +1552,7 @@
                         // Parcourir dans l'ordre : sous-sections niveau 2, puis leurs sous-sections niveau 3
                         subsectionsContainer.querySelectorAll('.sub-section').forEach(subEl => {
                             const subSectionId = parseInt(subEl.dataset.sectionId);
-                            const subSection = appState.sections.find(s => s.id === subSectionId);
+                            const subSection = window.appState.sections.find(s => s.id === subSectionId);
                             if (subSection) {
                                 newOrder.push(subSection);
                                 
@@ -1533,7 +1561,7 @@
                                 if (subSubContainer && subSubContainer.classList.contains('sub-sub-sections-container')) {
                                     subSubContainer.querySelectorAll('.sub-sub-section').forEach(subSubEl => {
                                         const subSubSectionId = parseInt(subSubEl.dataset.sectionId);
-                                        const subSubSection = appState.sections.find(s => s.id === subSubSectionId);
+                                        const subSubSection = window.appState.sections.find(s => s.id === subSubSectionId);
                                         if (subSubSection) {
                                             newOrder.push(subSubSection);
                                         }
@@ -1545,7 +1573,7 @@
                 }
             });
             
-            appState.sections = newOrder;
+            window.appState.sections = newOrder;
         }
 
         function moveImageToSection(imageFilename, targetSectionId) {
@@ -1554,12 +1582,12 @@
             let sourceSection = null;
             
             // Chercher dans unassigned
-            const unassignedIndex = appState.unassignedImages.findIndex(img => img.filename === imageFilename);
+            const unassignedIndex = window.appState.unassignedImages.findIndex(img => img.filename === imageFilename);
             if (unassignedIndex !== -1) {
-                image = appState.unassignedImages.splice(unassignedIndex, 1)[0];
+                image = window.appState.unassignedImages.splice(unassignedIndex, 1)[0];
             } else {
                 // Chercher dans les sections
-                for (let section of appState.sections) {
+                for (let section of window.appState.sections) {
                     const imageIndex = section.images.findIndex(img => img.filename === imageFilename);
                     if (imageIndex !== -1) {
                         image = section.images.splice(imageIndex, 1)[0];
@@ -1572,16 +1600,16 @@
             if (image) {
                 if (targetSectionId === 'unassigned') {
                     // Remettre dans les non attribuées
-                    appState.unassignedImages.push(image);
+                    window.appState.unassignedImages.push(image);
                 } else {
                     // Ajouter à la section cible
-                    const targetSection = appState.sections.find(s => s.id === targetSectionId);
+                    const targetSection = window.appState.sections.find(s => s.id === targetSectionId);
                     if (targetSection) {
                         targetSection.images.push(image);
                     }
                 }
                 updateStats();
-                updateAllFilenames();
+                renderSections(); // SESSION 3: updateAllFilenames() supprimée
             }
         }
         
@@ -1596,13 +1624,13 @@
                 let image = null;
                 
                 // Chercher dans unassigned
-                const unassignedIndex = appState.unassignedImages.findIndex(img => img.filename === filename);
+                const unassignedIndex = window.appState.unassignedImages.findIndex(img => img.filename === filename);
                 if (unassignedIndex !== -1) {
-                    image = appState.unassignedImages[unassignedIndex];
+                    image = window.appState.unassignedImages[unassignedIndex];
                     if (image) imagesToMove.push(image);
                 } else {
                     // Chercher dans les sections
-                    for (let section of appState.sections) {
+                    for (let section of window.appState.sections) {
                         const imageIndex = section.images.findIndex(img => img.filename === filename);
                         if (imageIndex !== -1) {
                             image = section.images[imageIndex];
@@ -1617,12 +1645,12 @@
             // Supprimer dans l'ordre inverse pour éviter les décalages d'index
             imageFilenames.slice().reverse().forEach(filename => {
                 // Chercher dans unassigned
-                const unassignedIndex = appState.unassignedImages.findIndex(img => img.filename === filename);
+                const unassignedIndex = window.appState.unassignedImages.findIndex(img => img.filename === filename);
                 if (unassignedIndex !== -1) {
-                    appState.unassignedImages.splice(unassignedIndex, 1);
+                    window.appState.unassignedImages.splice(unassignedIndex, 1);
                 } else {
                     // Chercher dans les sections
-                    for (let section of appState.sections) {
+                    for (let section of window.appState.sections) {
                         const imageIndex = section.images.findIndex(img => img.filename === filename);
                         if (imageIndex !== -1) {
                             section.images.splice(imageIndex, 1);
@@ -1638,10 +1666,10 @@
             
             if (targetSectionId === 'unassigned') {
                 // Ajouter toutes les images aux non attribuées
-                appState.unassignedImages.push(...imagesToMove);
+                window.appState.unassignedImages.push(...imagesToMove);
             } else {
                 // Insérer dans la section cible à la position spécifiée
-                const targetSection = appState.sections.find(s => s.id === targetSectionId);
+                const targetSection = window.appState.sections.find(s => s.id === targetSectionId);
                 if (targetSection) {
                     // Calculer la position d'insertion réelle (en tenant compte des suppressions)
                     let actualInsertIndex = Math.min(insertIndex, targetSection.images.length);
@@ -1654,14 +1682,14 @@
             }
             
             updateStats();
-            updateAllFilenames();
+            renderSections(); // SESSION 3: updateAllFilenames() supprimée
         }
 
         function reorderImagesInSection(sectionId) {
             // Récupérer l'ordre actuel depuis le DOM
             const grid = document.querySelector(`[data-section-id="${sectionId}"]`);
             const imageCards = grid.querySelectorAll('.image-card');
-            const section = appState.sections.find(s => s.id === sectionId);
+            const section = window.appState.sections.find(s => s.id === sectionId);
             
             if (section) {
                 const newOrder = Array.from(imageCards).map(card => {
@@ -1670,14 +1698,14 @@
                 }).filter(img => img); // Filtrer les undefined
                 
                 section.images = newOrder;
-                updateAllFilenames();
+                renderSections(); // SESSION 3: updateAllFilenames() supprimée
             }
         }
         
         function reorderMultipleImagesInSection(sectionId, selectedImageFilenames, newIndex) {
             logInfo(`🔄 Réorganisation multiple: ${selectedImageFilenames.length} images vers index ${newIndex} dans section ${sectionId}`);
             
-            const section = appState.sections.find(s => s.id === sectionId);
+            const section = window.appState.sections.find(s => s.id === sectionId);
             if (!section) {
                 logError(`Section ${sectionId} introuvable pour réorganisation multiple`);
                 return;
@@ -1725,24 +1753,24 @@
             section.images.splice(insertIndex, 0, ...imagesToMove);
             
             logInfo(`✅ ${imagesToMove.length} images déplacées vers index ${insertIndex} dans section ${sectionId}`);
-            updateAllFilenames();
+            renderSections(); // SESSION 3: updateAllFilenames() supprimée
         }
 
 
         
         function updateNomenclatureNumber(sectionId, newNumber) {
-            const section = appState.sections.find(s => s.id === sectionId);
+            const section = window.appState.sections.find(s => s.id === sectionId);
             if (section) {
                 section.nomenclatureNumber = newNumber.trim();
                 // Marquer comme personnalisé si différent du numéro de section
                 section.isCustomNomenclature = (newNumber.trim() !== section.sectionNumber);
-                updateAllFilenames();
+                renderSections(); // SESSION 3: updateAllFilenames() supprimée
                 renderSections(); // Re-render pour mettre à jour l'exemple et les noms de fichiers
             }
         }
         
         function editNomenclature(sectionId, currentNomenclature, element) {
-            const section = appState.sections.find(s => s.id === sectionId);
+            const section = window.appState.sections.find(s => s.id === sectionId);
             if (!section) return;
             
             // Créer un input temporaire
@@ -1796,17 +1824,18 @@
             });
         }
 
-        function generateFilename(sectionNumber, imageNumber) {
-            return `${appState.prefix}-${appState.documentName}-${sectionNumber} n_${imageNumber}.${appState.format}`;
-        }
+        // 🗑️ SESSION 3: generateFilename() SUPPRIMÉE - Remplacée par ImageDisplayManager
 
-        function updateAllFilenames() {
-            // Mettre à jour l'affichage des noms de fichiers
-            renderSections();
-        }
+        // 🗑️ SESSION 3: updateAllFilenames() SUPPRIMÉE - renderSections() utilisé directement
 
         function updateStats() {
-            document.getElementById('sectionsCount').textContent = appState.sections.length;
+            // Sécurité : vérifier que window.appState existe
+            if (!window.appState || !window.appState.sections) {
+                console.warn('⚠️  window.appState.sections n\'existe pas dans updateStats');
+                document.getElementById('sectionsCount').textContent = '0';
+            } else {
+                document.getElementById('sectionsCount').textContent = window.appState.sections.length;
+            }
             document.getElementById('imagesCount').textContent = extractedImages.length;
             updateSelectionStats();
         }
@@ -1814,8 +1843,21 @@
         function updateUnassignedImages() {
             console.log('🔄 Mise à jour des images non attribuées...');
             
+            // Sécurité : vérifier que window.appState et ses propriétés existent
+            if (!window.appState) {
+                console.warn('⚠️  window.appState n\'existe pas dans updateUnassignedImages');
+                return;
+            }
+            if (!window.appState.sections) {
+                console.warn('⚠️  window.appState.sections n\'existe pas, initialisation...');
+                window.appState.sections = [];
+            }
+            if (!window.appState.unassignedImages) {
+                window.appState.unassignedImages = [];
+            }
+            
             const assignedFilenames = new Set();
-            appState.sections.forEach(section => {
+            window.appState.sections.forEach(section => {
                 section.images.forEach(image => {
                     assignedFilenames.add(image.filename);
                 });
@@ -1824,11 +1866,11 @@
             console.log(`  Images assignées: ${assignedFilenames.size}`);
             console.log(`  Images extraites total: ${extractedImages.length}`);
             
-            appState.unassignedImages = extractedImages.filter(image => 
+            window.appState.unassignedImages = extractedImages.filter(image => 
                 !assignedFilenames.has(image.filename)
             );
             
-            console.log(`  Images non attribuées calculées: ${appState.unassignedImages.length}`);
+            console.log(`  Images non attribuées calculées: ${window.appState.unassignedImages.length}`);
             
             renderUnassignedImages();
         }
@@ -1838,16 +1880,23 @@
             const grid = document.getElementById('unassignedGrid');
             const badge = document.getElementById('unassignedBadge');
             
+            // Sécurité : vérifier que window.appState existe
+            if (!window.appState || !window.appState.unassignedImages) {
+                console.warn('⚠️  window.appState.unassignedImages n\'existe pas dans renderUnassignedImages');
+                container.style.display = 'none';
+                return;
+            }
+            
             // TOUJOURS vider le contenu HTML d'abord pour éviter les doublons
             grid.innerHTML = '';
             
-            if (appState.unassignedImages.length === 0) {
+            if (window.appState.unassignedImages.length === 0) {
                 container.style.display = 'none';
             } else {
                 container.style.display = 'block';
-                badge.textContent = appState.unassignedImages.length;
+                badge.textContent = window.appState.unassignedImages.length;
                 
-                grid.innerHTML = appState.unassignedImages.map((image, index) => 
+                grid.innerHTML = window.appState.unassignedImages.map((image, index) => 
                     renderImageCard(image, 'NON-ATTRIBUEE', index + 1)
                 ).join('');
                 
@@ -1900,7 +1949,7 @@
             currentImagesList = [];
             
             // Ajouter d'abord les images non attribuées
-            appState.unassignedImages.forEach(image => {
+            window.appState.unassignedImages.forEach(image => {
                 currentImagesList.push({
                     filename: image.filename,
                     page: image.page,
@@ -1910,7 +1959,7 @@
             });
             
             // Puis ajouter les images de toutes les sections dans l'ordre
-            appState.sections.forEach(section => {
+            window.appState.sections.forEach(section => {
                 section.images.forEach((image, index) => {
                     currentImagesList.push({
                         filename: image.filename,
@@ -1948,7 +1997,7 @@
             modalCounter.textContent = `${currentImageIndex + 1} / ${currentImagesList.length}`;
             
             // Charger la nouvelle image avec timestamp anti-cache
-            const newImageSrc = `/image/${appState.documentName}/${currentImage.filename}?t=${Date.now()}`;
+            const newImageSrc = `/image/${window.appState.documentName}/${currentImage.filename}?t=${Date.now()}`;
             
             modalImage.onload = function() {
                 loading.style.display = 'none';
@@ -2065,14 +2114,7 @@
             }
         }
 
-        // Fonction pour toggle les tips
-        function toggleTips() {
-            const content = document.getElementById('tipsContent');
-            const chevron = document.getElementById('tipsChevron');
-            
-            content.classList.toggle('collapsed');
-            chevron.classList.toggle('rotated');
-        }
+
         
         // Variables globales pour le sélecteur de section
         let currentSectionSelector = null;
@@ -2191,7 +2233,7 @@
             `;
             
             // Ajouter toutes les sections disponibles
-            appState.sections.forEach(section => {
+            window.appState.sections.forEach(section => {
                 const level = section.level || 1;
                 const sectionNumber = section.sectionNumber || section.number;
                 const nomenclatureNumber = section.nomenclatureNumber || sectionNumber;
@@ -2385,7 +2427,7 @@
                     moveImageToSection(filename, targetSectionId);
                 });
             } else {
-                const targetSection = appState.sections.find(s => s.id === targetSectionId);
+                const targetSection = window.appState.sections.find(s => s.id === targetSectionId);
                 if (targetSection) {
                     moveImagesToSectionAtPosition(imagesToMove, targetSectionId, targetSection.images.length);
                 }
@@ -2510,13 +2552,13 @@
             if (specificSectionId !== null) {
                 // Chercher seulement dans une section spécifique
                 if (specificSectionId === 'unassigned') {
-                    appState.unassignedImages.forEach(image => {
+                    window.appState.unassignedImages.forEach(image => {
                         if (selectedImages.has(image.filename)) {
                             orderedSelectedImages.push(image.filename);
                         }
                     });
                 } else {
-                    const section = appState.sections.find(s => s.id === specificSectionId);
+                    const section = window.appState.sections.find(s => s.id === specificSectionId);
                     if (section) {
                         section.images.forEach(image => {
                             if (selectedImages.has(image.filename)) {
@@ -2528,14 +2570,14 @@
             } else {
                 // Comportement original : chercher dans toutes les sections
                 // D'abord, chercher dans les images non attribuées
-                appState.unassignedImages.forEach(image => {
+                window.appState.unassignedImages.forEach(image => {
                     if (selectedImages.has(image.filename)) {
                         orderedSelectedImages.push(image.filename);
                     }
                 });
                 
                 // Ensuite, parcourir toutes les sections dans l'ordre hiérarchique
-                appState.sections.forEach(section => {
+                window.appState.sections.forEach(section => {
                     section.images.forEach(image => {
                         if (selectedImages.has(image.filename)) {
                             orderedSelectedImages.push(image.filename);
@@ -2617,7 +2659,7 @@
                 stackImage.className = `drag-stack-image stack-${index + 1}`;
                 
                 const img = document.createElement('img');
-                img.src = `/image/${appState.documentName}/${filename}`;
+                img.src = `/image/${window.appState.documentName}/${filename}`;
                 img.onerror = () => img.style.display = 'none';
                 
                 stackImage.appendChild(img);
@@ -2810,23 +2852,55 @@
         }
         
         function exportImages() {
+            // Debug : montrer l'état actuel des sections
+            console.log('🔍 Export - État des sections:', window.appState.sections);
+            
             // Générer la configuration d'export
             const exportConfig = {
-                prefix: appState.prefix,
-                documentName: appState.documentName,
-                format: appState.format,
-                sections: appState.sections.map(section => ({
+                prefix: window.appState.prefix,
+                documentName: window.appState.documentName,
+                format: window.appState.format,
+                sections: window.appState.sections.map(section => ({
                     number: section.nomenclatureNumber || section.sectionNumber || section.number,
                     displayNumber: section.sectionNumber || section.number,
                     name: section.name,
                     level: section.level || 1,
-                    images: section.images.map((image, index) => ({
-                        originalFilename: image.filename,
-                        newFilename: generateFilename(section.nomenclatureNumber || section.sectionNumber || section.number, index + 1),
-                        page: image.page
-                    }))
+                    images: section.images.map((image, index) => {
+                        let finalFilenameInZip;
+                        const sectionNomenclature = section.nomenclatureNumber || section.sectionNumber || section.number;
+                        const imageIndexInSection = index + 1;
+                        
+                        // 🚀 v3.0: Utilisation du système IMMUTABLE pour l'export (génération "juste-à-temps")
+                        if (window.imageDisplayManager && window.imageDisplayManager.getImageName) {
+                            finalFilenameInZip = window.imageDisplayManager.getImageName(
+                                image, 
+                                'export', 
+                                sectionNomenclature, 
+                                imageIndexInSection
+                            );
+                            console.log(`🎯 Export: ${image.filename} -> ${finalFilenameInZip}`);
+                        } else {
+                            // Fallback sécurisé si manager non disponible
+                            console.warn(`⚠️ Fallback export pour: ${image.filename}`);
+                            if (image.isAIRenamed && image.aiSuggestedName) {
+                                finalFilenameInZip = `${window.appState.prefix}-${window.appState.documentName}-${sectionNomenclature}-${imageIndexInSection} ${image.aiSuggestedName}.${window.appState.format}`;
+                            } else {
+                                finalFilenameInZip = `${window.appState.prefix}-${window.appState.documentName}-${sectionNomenclature} n_${imageIndexInSection}.${window.appState.format}`;
+                            }
+                        }
+
+                        const config = {
+                            originalFilename: image.filename, // C'est le nom physique sur le disque
+                            newFilename: finalFilenameInZip,  // C'est le nom que le fichier aura dans le ZIP
+                            page: image.page
+                        };
+                        console.log(`🔍 Export - Image ${index + 1}:`, config);
+                        return config;
+                    })
                 }))
             };
+            
+            console.log('🔍 Export - Configuration finale:', exportConfig);
             
             // Envoyer la configuration au serveur pour générer le ZIP
             fetch('/export-custom', {
@@ -2842,7 +2916,7 @@
                 const a = document.createElement('a');
                 a.style.display = 'none';
                 a.href = url;
-                a.download = `${appState.documentName}_custom.zip`;
+                a.download = `${window.appState.documentName}_custom.zip`;
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
@@ -2853,6 +2927,34 @@
             });
         }
 
+    </script>
+
+    <!--  IMAGE DISPLAY MANAGER v3.0 -->
+    <script src="{{ url_for('static', filename='js/image-display-manager.js') }}"></script>
+    
+    <!-- 🧪 Tests Architecture v3.0 (mode développement) -->
+
+    
+    <script>
+        // Configuration pour mode développement
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            window.DEBUG_NAMING = false; // Mettre à true pour debug détaillé du nommage
+            console.log('🔧 Mode dev - Debug disponible: window.DEBUG_NAMING = true');
+        }
+        
+        // Vérification que le manager est bien initialisé
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.imageDisplayManager) {
+                console.log('✅ [v3.0] ImageDisplayManager initialisé avec succès');
+                
+                // Diagnostic en mode dev
+                if (window.DEBUG_NAMING) {
+                    window.imageDisplayManager.diagnose();
+                }
+            } else {
+                console.error('❌ [v3.0] ImageDisplayManager non disponible!');
+            }
+        });
     </script>
 
     <!-- Include Image Editor Modal -->

@@ -1138,6 +1138,10 @@ class ImageEditor {
                         }
                         
                         extractedImages.splice(originalIndex + 1, 0, newImage);
+                        
+                        // NOUVEAU : Hériter du nom IA dans window.appState
+                        this.inheritAINameInAppState(originalFilename, newFilename);
+                        
                         if (typeof logInfo === 'function') {
                             logInfo('[DIAGNOSTIC] extractedImages mis à jour (nouvelle image ajoutée):', newFilename);
                             logInfo('[DIAGNOSTIC] extractedImages length après ajout:', extractedImages.length);
@@ -1258,6 +1262,42 @@ class ImageEditor {
         }
     }
     
+    /**
+     * Fait hériter du nom IA de l'image source vers l'image éditée
+     */
+    inheritAINameInAppState(originalFilename, newFilename) {
+        try {
+            if (typeof window.appState !== 'undefined' && window.appState.sections) {
+                // Trouver l'image originale dans appState pour récupérer ses métadonnées IA
+                for (let section of window.appState.sections) {
+                    const originalImage = section.images.find(img => img.filename === originalFilename);
+                    if (originalImage && originalImage.isAIRenamed && originalImage.aiSuggestedName) {
+                        if (typeof logInfo === 'function') {
+                            logInfo(`🧬 Héritage nom IA: "${originalImage.aiSuggestedName}" de ${originalFilename} vers ${newFilename}`);
+                        }
+                        
+                        // Trouver la nouvelle image dans la même section pour appliquer l'héritage
+                        const newImage = section.images.find(img => img.filename === newFilename);
+                        if (newImage) {
+                            newImage.isAIRenamed = true;
+                            newImage.aiSuggestedName = originalImage.aiSuggestedName;
+                            newImage.aiTags = originalImage.aiTags ? [...originalImage.aiTags] : [];
+                            
+                            if (typeof logInfo === 'function') {
+                                logInfo(`✅ Nom IA hérité avec succès: ${newImage.aiSuggestedName}`);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (error) {
+            if (typeof logError === 'function') {
+                logError('❌ Erreur lors de l\'héritage du nom IA:', error);
+            }
+        }
+    }
+
     /**
      * Ajoute la nouvelle image à la même section que l'image originale
      */

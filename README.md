@@ -18,6 +18,14 @@ pip install -r requirements.txt
 python app.py
 ```
 
+**Optional - AI Auto-indexing:**
+```bash
+# Copy environment template
+cp .env.example .env
+# Add your Mistral API key to .env file
+echo "MISTRAL_API_KEY=your_api_key_here" >> .env
+```
+
 Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 
 ## What it does
@@ -26,11 +34,12 @@ Open `http://localhost:5000` → Upload PDF → Edit sections → Export ZIP
 - **🎨 Intuitive interface**: Drag & drop section organization with visual editing tools
 - **🖊️ Image annotations**: Built-in image editor with drawing tools and annotations (beta)
 - **📝 Custom naming**: Personalize section nomenclature
+- **🤖 AI-powered Auto-indexing**: Intelligent auto-tagging and indexing of images (beta)
 - **📦 Clean export**: Organized ZIP with custom filenames
 
 ## Tech Stack
 
-**Backend**: Flask + PyMuPDF  
+**Backend**: Flask + PyMuPDF + Mistral AI  
 **Frontend**: Bootstrap + SortableJS + Modern CSS
 
 ## 📁 Core Files
@@ -58,7 +67,8 @@ Here's a brief overview of planned features and improvements:
 
 *   **Tool selection in editor:** The selection of drawing tools in the image editor can sometimes be unstable.
 *   **Invisible annotations:** Annotations on images may occasionally appear invisible or not render as expected.
-*   **Incorrect display of created images in viewer:** Newly created or modified images might not display correctly in the image previewer/lightbox immediately.
+*   **AI-powered Auto-indexing:** The AI-powered auto-indexing is in beta and may not always work as expected.
+
 
 ## 🤝 Contributing
 

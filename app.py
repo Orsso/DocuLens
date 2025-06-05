@@ -11,8 +11,19 @@ from datetime import datetime
 from PIL import Image
 import numpy as np
 import hashlib
+import uuid
 from collections import defaultdict
-from ai_indexing import get_indexer, test_api_connection
+from ai_indexing import get_indexer, test_api_connection, ensure_unique_titles, ensure_unique_titles_global
+
+# Charger les variables d'environnement depuis le fichier .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Fichier .env chargé avec succès")
+except ImportError:
+    print("⚠️ python-dotenv non disponible, utilisation des variables d'environnement système")
+except Exception as e:
+    print(f"⚠️ Erreur lors du chargement du .env: {e}")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'votre_cle_secrete_ici'
@@ -547,35 +558,16 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
         filtered_images = all_images_data
         print(f"🔍 Filtrage désactivé - {len(filtered_images)} images conservées")
     
-    # Pré-compter le nombre d'images par section après filtrage
-    images_per_section_final_count = defaultdict(int)
-    for _, metadata in filtered_images:
-        images_per_section_final_count[metadata['section']['number']] += 1
-
-    # Deuxième passe : sauvegarder les images filtrées
+    # Deuxième passe : sauvegarder les images filtrées avec UIDs uniques
     extracted_files = []
-    section_image_counts = {} # Compteur pour la numérotation si plusieurs images/section
     
     for image_data, metadata in filtered_images:
         current_section = metadata['section']
         section_number = current_section['number']
         
-        # Initialiser le compteur d'images pour cette section (pour la numérotation n_X)
-        if section_number not in section_image_counts:
-            section_image_counts[section_number] = 0
-        
-        # Incrémenter le compteur d'images pour la numérotation n_X
-        section_image_counts[section_number] += 1
-        image_number_in_section = section_image_counts[section_number] # Numéro courant si >1 image
-        
-        # Créer le nom de fichier selon la nouvelle logique
-        if images_per_section_final_count[section_number] > 1:
-            # S'il y a plusieurs images dans cette section, ajouter n_X
-            filename = f"CRL-{clean_filename}-{section_number} n_{image_number_in_section}.jpg"
-        else:
-            # Une seule image dans cette section, pas de n_X
-            filename = f"CRL-{clean_filename}-{section_number}.jpg"
-            
+        # ARCHITECTURE V3.0 : Génération d'UID unique pour identifiant physique IMMUABLE
+        unique_id = str(uuid.uuid4())[:8]  # 8 premiers caractères de l'UUID
+        filename = f"{unique_id}.jpg"
         filepath = os.path.join(output_folder, filename)
         
         # Sauvegarder l'image en JPEG
@@ -585,12 +577,13 @@ def extract_images_from_pdf(pdf_path, output_folder, document_name, filter_dupli
         img_pil.save(filepath, 'JPEG', quality=95)
         
         extracted_files.append({
-            'filename': filename,
+            'filename': filename,  # UID unique (exemple: a1b2c3d4.jpg)
+            'uid': unique_id,      # UID pur pour référence
             'path': filepath,
-            'section': section_number,
-            'section_title': current_section['title'],
-            'page': metadata['page'],
-            'image_number': image_number_in_section if images_per_section_final_count[section_number] > 1 else 1 # ou None si on préfère
+            'section': section_number,       # Métadonnée : section détectée
+            'section_title': current_section['title'],  # Métadonnée : titre section
+            'page': metadata['page'],        # Métadonnée : numéro de page
+            'image_number': 1                # Métadonnée : sera calculée côté client
         })
     
     pdf_document.close()
@@ -642,6 +635,26 @@ def serve_image(folder_name, filename):
 def index():
     return render_template('index.html')
 
+@app.route('/validation')
+def validation_session1():
+    """Route pour tester le nouveau ImageDisplayManager"""
+    return send_file('validation_session1.html')
+
+@app.route('/test_session2_fix.html')
+def test_session2_fix():
+    """Route pour tester les corrections du SESSION 2"""
+    return send_file('test_session2_fix.html')
+
+@app.route('/test_image_names.html')
+def test_image_names():
+    """Route pour tester l'extraction des noms purs"""
+    return send_file('test_image_names.html')
+
+@app.route('/debug_appstate.html')
+def debug_appstate():
+    """Route pour debugger la structure appState"""
+    return send_file('debug_appstate.html')
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -664,12 +677,17 @@ def upload_file():
         
         # Récupérer le nom du document configuré par l'utilisateur
         document_name = request.form.get('document_name', '').strip()
+        print(f"🔍 DEBUG: document_name reçu du formulaire: '{document_name}'")
+        print(f"🔍 DEBUG: request.form complet: {dict(request.form)}")
+        
         if not document_name:
             # Si pas de nom configuré, utiliser le nom du fichier sans extension
             document_name = os.path.splitext(filename)[0]
+            print(f"🔍 DEBUG: document_name par défaut (nom fichier): '{document_name}'")
         
         # Nettoyer le nom du document (seulement lettres, chiffres, tirets, underscores)
         clean_document_name = re.sub(r'[^\w\-_]', '_', document_name)
+        print(f"🔍 DEBUG: clean_document_name final: '{clean_document_name}'")
         
         # Récupérer les options
         filter_duplicates = request.form.get('filter_duplicates') == 'on'
@@ -703,6 +721,7 @@ def upload_file():
             print(f"Nom du document: {clean_document_name}")
             print(f"Dossier de sortie: {output_subfolder}")
             print(f"Images extraites: {len(result['extracted_files'])}")
+            print(f"🔍 DEBUG: result['document_name'] envoyé au template: '{result['document_name']}'")
             
             return render_template('results.html', 
                                  result=result, 
@@ -746,35 +765,24 @@ def download_zip(folder_name):
 
 @app.route('/api/images/<path:folder_name>')
 def get_images_json(folder_name):
-    """API pour récupérer les images en JSON"""
+    """API pour récupérer les images en JSON - ARCHITECTURE V3.0 : UIDs uniques"""
     folder_path = os.path.join(app.config['OUTPUT_FOLDER'], folder_name)
     images = []
     
     if os.path.exists(folder_path):
         for filename in os.listdir(folder_path):
             if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-                # Extraire les infos du nom de fichier (CRL-DOC-X n_Y.ext)
-                parts = filename.split('-')
-                if len(parts) >= 3:
-                    try:
-                        section_part = parts[-1].split(' ')[0]  # "X"
-                        number_part = parts[-1].split('n_')[1].split('.')[0]  # "Y"
-                        page_num = 1  # Valeur par défaut
-                        
-                        images.append({
-                            'filename': filename,
-                            'section': section_part,
-                            'page': page_num,
-                            'image_number': int(number_part)
-                        })
-                    except:
-                        # Fallback si le parsing échoue
-                        images.append({
-                            'filename': filename,
-                            'section': '1',
-                            'page': 1,
-                            'image_number': len(images) + 1
-                        })
+                # ARCHITECTURE V3.0 : Les noms sont maintenant des UIDs (exemple: a1b2c3d4.jpg)
+                # Les métadonnées sont stockées côté client dans appState
+                uid = os.path.splitext(filename)[0]  # Récupérer l'UID sans extension
+                
+                images.append({
+                    'filename': filename,    # UID.jpg
+                    'uid': uid,             # UID pur
+                    'section': '1',         # Métadonnée par défaut (sera écrasée côté client)
+                    'page': 1,              # Métadonnée par défaut (sera écrasée côté client)
+                    'image_number': len(images) + 1  # Numéro séquentiel temporaire
+                })
     
     return jsonify(images)
 
@@ -789,19 +797,28 @@ def export_custom():
         import shutil
         
         with tempfile.TemporaryDirectory() as temp_dir:
+            document_folder = os.path.join(app.config['OUTPUT_FOLDER'], config['documentName'])
+            
             # Traiter chaque section
             for section in config['sections']:
                 for image_config in section['images']:
-                    original_path = os.path.join(
-                        app.config['OUTPUT_FOLDER'], 
-                        config['documentName'], 
-                        image_config['originalFilename']
-                    )
+                    # Utiliser le nom de fichier actuel sur le disque
+                    current_physical_filename = image_config['originalFilename']
+                    # Nom souhaité pour le fichier dans le ZIP (déjà correctement formaté par le client)
+                    filename_in_zip = image_config['newFilename']
                     
-                    if os.path.exists(original_path):
-                        new_filename = image_config['newFilename']
-                        new_path = os.path.join(temp_dir, new_filename)
-                        shutil.copy2(original_path, new_path)
+                    current_physical_path = os.path.join(document_folder, current_physical_filename)
+                    
+                    if os.path.exists(current_physical_path):
+                        print(f"[Export] Copie: '{current_physical_path}' -> vers ZIP sous nom: '{filename_in_zip}'")
+                        path_in_zip = os.path.join(temp_dir, filename_in_zip)
+                        
+                        # S'assurer que le dossier parent existe dans temp_dir si filename_in_zip contient des sous-dossiers (peu probable ici)
+                        # os.makedirs(os.path.dirname(path_in_zip), exist_ok=True)
+                        
+                        shutil.copy2(current_physical_path, path_in_zip)
+                    else:
+                        print(f"[Export] ⚠️ Fichier source non trouvé, ignoré: {current_physical_path}")
             
             # Créer le ZIP
             memory_file = BytesIO()
@@ -955,14 +972,15 @@ def ai_indexing_analyze():
                 'error': 'Service d\'indexation IA non disponible. Vérifiez votre clé API Mistral.'
             }), 503
         
-        results = []
+        # Analyser toutes les images d'abord
+        raw_results = []
         document_folder = os.path.join(app.config['OUTPUT_FOLDER'], document_name)
         
         for image_filename in images:
             image_path = os.path.join(document_folder, image_filename)
             
             if not os.path.exists(image_path):
-                results.append({
+                raw_results.append({
                     'filename': image_filename,
                     'success': False,
                     'error': 'Image non trouvée'
@@ -973,25 +991,47 @@ def ai_indexing_analyze():
             analysis = indexer.analyze_image(image_path)
             
             if analysis:
-                results.append({
+                raw_results.append({
                     'filename': image_filename,
                     'success': True,
                     'title': analysis['title'],
-                    'tags': analysis['tags'],
-                    'suggested_filename': generate_new_filename(image_filename, analysis['title'])
+                    'tags': analysis['tags']
                 })
             else:
-                results.append({
+                raw_results.append({
                     'filename': image_filename,
                     'success': False,
                     'error': 'Échec de l\'analyse par IA'
                 })
         
+        # Appliquer la gestion des doublons uniquement sur les résultats réussis
+        successful_results = [r for r in raw_results if r.get('success', False)]
+        unique_results = ensure_unique_titles_global(successful_results, document_name)
+        
+        # Reconstituer la liste finale avec les titres uniques et générer les noms de fichiers
+        final_results = []
+        success_index = 0
+        
+        for raw_result in raw_results:
+            if raw_result.get('success', False):
+                unique_result = unique_results[success_index]
+                final_results.append({
+                    'filename': unique_result['filename'],
+                    'success': True,
+                    'title': unique_result['title'],
+                    'suggested_name': unique_result['title'],  # Harmonisation avec le client
+                    'tags': unique_result['tags'],
+                    'suggested_filename': generate_new_filename(unique_result['filename'], unique_result['title'])
+                })
+                success_index += 1
+            else:
+                final_results.append(raw_result)
+        
         return jsonify({
             'success': True,
-            'results': results,
+            'results': final_results,
             'total_processed': len(images),
-            'successful': len([r for r in results if r['success']])
+            'successful': len([r for r in final_results if r['success']])
         })
         
     except Exception as e:
@@ -1065,7 +1105,7 @@ def ai_indexing_rename():
 def generate_new_filename(original_filename, title):
     """
     Génère un nouveau nom de fichier basé sur le titre généré par l'IA
-    Remplace la partie 'n_Y' par le titre en 2 mots
+    Remplace la partie 'n_Y' par le titre en 2 mots pour l'affichage
     """
     try:
         # Exemple: CRL-DOC-1 n_5.jpg -> CRL-DOC-1 graphique courbes.jpg
@@ -1087,6 +1127,23 @@ def generate_new_filename(original_filename, title):
     except:
         # En cas d'erreur, retourner le nom original
         return original_filename
+
+def generate_export_filename(section_nomenclature, image_index, ai_title, extension):
+    """
+    Génère un nom de fichier pour l'export ZIP selon le format spécifié :
+    [PREFIXE-SECTION]-[Y] [nom de l'image].extension
+    où Y est le numéro de l'image dans la section
+    """
+    try:
+        # Nettoyer le titre IA (supprimer caractères spéciaux)
+        clean_title = re.sub(r'[^\w\s-]', '', ai_title).strip()
+        clean_title = re.sub(r'\s+', ' ', clean_title)  # Normaliser les espaces
+        
+        # Format : PREFIXE-SECTION-[Y] [nom IA].extension
+        return f"{section_nomenclature}-{image_index} {clean_title}.{extension}"
+    except:
+        # Fallback en cas d'erreur
+        return f"{section_nomenclature}-{image_index} image.{extension}"
 
 if __name__ == '__main__':
     import os
