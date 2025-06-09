@@ -659,8 +659,8 @@ class ImageEditor {
                             left: annotationGroup.left,
                             top: annotationGroup.top,
                             angle: annotationGroup.angle,
-            originX: 'center',
-            originY: 'center',
+                            originX: 'center',
+                            originY: 'center',
                             isAnnotation: true
                         });
                         
@@ -3170,7 +3170,7 @@ class ImageEditor {
             const newWidth = parseInt(widthInput.value);
             const newHeight = parseInt(heightInput.value);
             if (newWidth >= 100 && newWidth <= 3000 && newHeight >= 100 && newHeight <= 3000) {
-        this.saveState();
+                this.saveState();
                 this.baseCanvasWidth = newWidth;
                 this.baseCanvasHeight = newHeight;
                 this.applyCanvasScaleAndObjects(this.currentCanvasScale);

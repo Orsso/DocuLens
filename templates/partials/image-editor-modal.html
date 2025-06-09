@@ -150,6 +150,9 @@
                         <button class="toolbar-btn" data-tool="pen" title="Stylo">
                             <i class="fas fa-pen"></i>
                         </button>
+                        <button class="toolbar-btn" data-tool="annotation" title="Annotation avec flèche">
+                            <i class="fas fa-comment-dots"></i>
+                        </button>
                     </div>
                     
                     <!-- Couleurs Rapides -->
@@ -178,6 +181,20 @@
                             <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
+                    
+                    <!-- Actions Spéciales -->
+                    <div class="toolbar-group">
+                        <button class="toolbar-btn action-btn" id="importBtn" title="Importer une image">
+                            <i class="fas fa-file-import"></i>
+                            <span style="margin-left: 5px; font-size: 0.85em;">Importer</span>
+                        </button>
+                        <button class="toolbar-btn action-btn" id="resizeCanvasBtn" title="Redimensionner le canvas">
+                            <i class="fas fa-expand"></i>
+                            <span style="margin-left: 5px; font-size: 0.85em;">Redimensionner</span>
+                        </button>
+                    </div>
+                    
+
                 </div>
                 
                 <!-- Actions -->
@@ -202,8 +219,8 @@
                         <div class="property-group">
                             <label>Épaisseur</label>
                             <div class="stroke-width-control">
-                                <input type="range" id="strokeWidth" min="1" max="20" value="2" class="form-range">
-                                <span id="strokeWidthValue">2px</span>
+                                <input type="range" id="strokeWidth" min="1" max="20" value="3" class="form-range">
+                                <span id="strokeWidthValue">3px</span>
                             </div>
                         </div>
                         
@@ -241,11 +258,63 @@
                                 </button>
                             </div>
                         </div>
+                        
+                        <!-- Propriétés des Images Fusionnées -->
+                        <div class="property-group merge-properties" style="display: none;">
+                            <label>Position</label>
+                            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                                <div style="flex: 1;">
+                                    <small>X</small>
+                                    <input type="number" id="mergeX" class="form-control" step="1">
+                                </div>
+                                <div style="flex: 1;">
+                                    <small>Y</small>
+                                    <input type="number" id="mergeY" class="form-control" step="1">
+                                </div>
+                            </div>
+                            
+                            <label>Dimensions</label>
+                            <div style="display: flex; gap: 5px; align-items: center; margin-bottom: 10px;">
+                                <div style="flex: 1;">
+                                    <small>Largeur</small>
+                                    <input type="number" id="mergeWidth" class="form-control" step="1">
+                                </div>
+                                <button class="btn btn-sm" id="lockRatio" title="Verrouiller le ratio" style="padding: 4px 8px;">
+                                    <i class="fas fa-link"></i>
+                                </button>
+                                <div style="flex: 1;">
+                                    <small>Hauteur</small>
+                                    <input type="number" id="mergeHeight" class="form-control" step="1">
+                                </div>
+                            </div>
+                            
+                            <label>Rotation</label>
+                            <div class="rotation-control">
+                                <input type="range" id="mergeRotation" min="0" max="360" value="0" class="form-range">
+                                <span id="rotationValue">0°</span>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Calques -->
                     <div class="sidebar-section">
-                        <h6>Calques</h6>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h6 style="margin: 0;">Calques</h6>
+                            <div class="layer-controls" style="display: flex; gap: 2px;">
+                                <button class="btn btn-sm layer-control-btn" id="bringToFrontBtn" title="Mettre au premier plan" disabled style="padding: 2px 6px;">
+                                    <i class="fas fa-arrow-up" style="font-size: 0.8em;"></i>
+                                </button>
+                                <button class="btn btn-sm layer-control-btn" id="bringForwardBtn" title="Avancer d'un niveau" disabled style="padding: 2px 6px;">
+                                    <i class="fas fa-angle-up" style="font-size: 0.8em;"></i>
+                                </button>
+                                <button class="btn btn-sm layer-control-btn" id="sendBackwardBtn" title="Reculer d'un niveau" disabled style="padding: 2px 6px;">
+                                    <i class="fas fa-angle-down" style="font-size: 0.8em;"></i>
+                                </button>
+                                <button class="btn btn-sm layer-control-btn" id="sendToBackBtn" title="Mettre en arrière plan" disabled style="padding: 2px 6px;">
+                                    <i class="fas fa-arrow-down" style="font-size: 0.8em;"></i>
+                                </button>
+                            </div>
+                        </div>
                         <div id="layersList" class="layers-list">
                             <!-- Les calques seront générés dynamiquement -->
                         </div>

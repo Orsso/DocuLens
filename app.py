@@ -31,6 +31,9 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'extracted_images'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 
+# Configuration pour désactiver la mise en cache des fichiers statiques en mode développement
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
 # Créer les dossiers nécessaires
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
