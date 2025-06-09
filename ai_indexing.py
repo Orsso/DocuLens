@@ -76,18 +76,21 @@ class AIImageIndexer:
         return """Tu es un expert en analyse d'images techniques et de documents. 
 Analyse l'image et retourne exactement ces informations au format JSON :
 
-1. Un titre descriptif de maximum 2 mots en français
-2. Trois tags descriptifs au format #tag
+1. Un titre descriptif de maximum 2 mots en français SANS ACCENTS NI CARACTÈRES SPÉCIAUX
+2. Trois tags descriptifs au format #tag SANS ACCENTS NI CARACTÈRES SPÉCIAUX
 
 RÉPONSE OBLIGATOIRE (format JSON brut, sans markdown) :
 {"title": "deux mots", "tags": ["#tag1", "#tag2", "#tag3"]}
 
 Exemples de réponses attendues :
-{"title": "graphique courbes", "tags": ["#graphique", "#données", "#analyse"]}
-{"title": "tableau données", "tags": ["#tableau", "#statistiques", "#chiffres"]}
-{"title": "schéma technique", "tags": ["#schéma", "#technique", "#diagramme"]}
+{"title": "graphique courbes", "tags": ["#graphique", "#donnees", "#analyse"]}
+{"title": "tableau donnees", "tags": ["#tableau", "#statistiques", "#chiffres"]}
+{"title": "schema technique", "tags": ["#schema", "#technique", "#diagramme"]}
 
-IMPÉRATIF : Retourne seulement le JSON brut, sans aucune balise markdown, sans texte explicatif, sans ```json."""
+IMPÉRATIF : 
+- Retourne seulement le JSON brut, sans aucune balise markdown, sans texte explicatif, sans ```json
+- N'utilise JAMAIS d'accents (é, è, à, ç, etc.) ni de caractères spéciaux
+- Utilise uniquement des lettres simples a-z, chiffres 0-9, espaces et tirets"""
     
     def analyze_image(self, image_path):
         """
