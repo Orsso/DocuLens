@@ -11,7 +11,7 @@ class ImageEditor {
         
         // Propriétés par défaut pour les nouveaux objets et l'UI
         this.currentColor = '#FF0000';
-        this.currentStrokeWidth = 2;
+        this.currentStrokeWidth = 3; // Augmenté à 3 pour éviter l'invisibilité
         this.currentOpacity = 1;
         this.currentFontFamily = 'Arial';
         this.currentFontSize = 16;
@@ -25,6 +25,16 @@ class ImageEditor {
         this.canvasWrapper = null;     // Référence au div .canvas-wrapper
         this.MIN_CANVAS_SCALE = 0.1;   // Échelle minimale autorisée
         this.MAX_CANVAS_SCALE = 5.0;    // Échelle maximale autorisée
+        
+        // Mode de redimensionnement du canvas
+        this.isCanvasResizeMode = false;
+        this.previousTool = null;
+        this.canvasBorder = null;
+        this.resizeHandles = [];
+        
+        // Mode d'annotation à deux étapes
+        this.isCreatingAnnotation = false;
+        this.tempAnnotationBox = null;
 
         this.history = [];
         this.historyStep = 0;
@@ -44,7 +54,8 @@ class ImageEditor {
             arrow: { cursor: 'crosshair' },
             line: { cursor: 'crosshair' },
             text: { cursor: 'text' },
-            pen: { cursor: 'crosshair' }
+            pen: { cursor: 'crosshair' },
+            annotation: { cursor: 'crosshair' }
         };
         
         this.layers = [];
@@ -52,6 +63,11 @@ class ImageEditor {
         
         this._eventListenersInitialized = false;
         this.initEventListeners();
+        
+        // Propriétés pour la fusion d'images
+        this.mergedImages = []; // Stockage des images fusionnées
+        this.mergeModalInitialized = false;
+        this.tempAvailableImages = []; // Stockage temporaire des images disponibles pour la modal
     }
     
     /**
@@ -120,7 +136,7 @@ class ImageEditor {
         const canvasElement = document.getElementById('imageEditorCanvas');
         this.canvas = new fabric.Canvas(canvasElement, {
             // Les dimensions initiales seront définies dans loadImage via applyCanvasScaleAndObjects
-            backgroundColor: '#f0f0f0', // Sera probablement masqué par l'image ou le fond du wrapper
+            backgroundColor: '#ffffff', // Fond blanc
             selection: true,
             preserveObjectStacking: true,
             zoom: 1 // Le zoom interne de Fabric.js reste à 1
@@ -240,7 +256,8 @@ class ImageEditor {
                     selectable: false, // L'image de fond n'est pas sélectionnable
                     evented: false,    // Ni source d'événements
                     originX: 'left',
-                    originY: 'top'
+                    originY: 'top',
+                    isOriginalImage: true // Marquer comme image originale
                 });
 
                 this.baseCanvasWidth = img.width;  // Dimensions natives de l'image
@@ -260,7 +277,11 @@ class ImageEditor {
                 
                 this.canvas.setZoom(1); // S'assurer que le zoom interne de Fabric est à 1
 
-                // Appliquer l'échelle et charger l'image de fond
+                // Ajouter l'image au canvas comme objet (pas comme fond)
+                this.canvas.add(this.originalImage);
+                this.canvas.sendToBack(this.originalImage);
+                
+                // Appliquer l'échelle
                 this.applyCanvasScaleAndObjects(1.0); // oldScale est 1.0 car c'est la première mise à l'échelle
 
                 document.getElementById('editorImageName').textContent = `- ${filename}`;
@@ -279,52 +300,39 @@ class ImageEditor {
      * Gestion des événements de souris
      */
     onMouseDown(e) {
-        const pointer = this.canvas.getPointer(e.e);
-        
-        // Nouvelle logique de panning via scroll du wrapper
+        // Le panning avec Ctrl/Meta est prioritaire
         if (e.e.ctrlKey || e.e.metaKey) {
             this.isPanning = true;
             this.lastPanPoint = { x: e.e.clientX, y: e.e.clientY };
-            this.initialScroll = { 
-                left: this.canvasWrapper.scrollLeft, 
-                top: this.canvasWrapper.scrollTop 
-            };
-            this.canvasWrapper.style.cursor = 'grabbing'; // Appliquer directement au wrapper
-            this.canvas.defaultCursor = 'grabbing'; // Pour que Fabric n'override pas
-            this.canvas.hoverCursor = 'grabbing';
-            return; // Ne pas laisser Fabric gérer la sélection/dessin
-        }
-        
-        // Si on utilise l'outil de sélection, laisser Fabric.js gérer
-        if (this.currentTool === 'select') return;
-        
-        // Si on clique sur un objet existant avec un outil de dessin, ne pas créer de nouveau élément
-        if (e.target && e.target !== this.canvas && this.currentTool !== 'pen') { 
-            // Sauf pour le stylo, où on peut dessiner par-dessus
+            this.initialScroll = { left: this.canvasWrapper.scrollLeft, top: this.canvasWrapper.scrollTop };
+            this.canvasWrapper.style.cursor = 'grabbing';
             return;
         }
         
+        // Si l'outil est 'select', Fabric.js gère la sélection/déplacement.
+        // Notre nouvelle logique dans setTool assure que c'est le seul cas où les objets sont sélectionnables.
+        if (this.currentTool === 'select') {
+            return;
+        }
+
+        // Pour tous les autres outils, on initie un dessin.
+        // setTool a déjà désactivé la sélection, donc pas de risque de déplacer un objet.
+        const pointer = this.canvas.getPointer(e.e);
         this.isDrawing = true;
-        this.startX = pointer.x; // Coordonnées relatives au canevas Fabric
+        this.startX = pointer.x;
         this.startY = pointer.y;
-        this.tempObject = null; // Réinitialiser pour les outils de forme
-        
-        switch (this.currentTool) {
-            case 'rectangle':
-            case 'circle':
-            case 'arrow':
-            case 'line':
-                this.suppressSaveStateForTempObject = true;
-                break;
-            case 'pen':
-                this.startFreeDrawing();
-                break;
-            case 'text':
-                // Convertir les coordonnées du pointeur (relatives au canevas mis à l'échelle)
-                // en coordonnées de base si nécessaire, ou simplement les utiliser telles quelles.
-                // Pour l'instant, on les utilise telles quelles, car les objets sont mis à l'échelle globalement.
-                this.addText(pointer.x, pointer.y);
-                break;
+        this.tempObject = null;
+
+        this.suppressSaveStateForTempObject = true;
+
+        if (this.currentTool === 'text') {
+            this.addText(pointer.x, pointer.y);
+            this.isDrawing = false; // Le texte est un événement ponctuel
+            this.suppressSaveStateForTempObject = false;
+        } else if (this.currentTool === 'annotation') {
+            this.addAnnotation(pointer.x, pointer.y);
+            this.isDrawing = false; // L'annotation est gérée en deux étapes
+            this.suppressSaveStateForTempObject = false;
         }
     }
     
@@ -340,7 +348,7 @@ class ImageEditor {
             return; // Ne pas laisser Fabric gérer autre chose
         }
         
-        if (!this.isDrawing || this.currentTool === 'select' || this.currentTool === 'pen' || this.currentTool === 'text') return;
+        if (!this.isDrawing || this.currentTool === 'select' || this.currentTool === 'pen') return;
         
         const pointer = this.canvas.getPointer(e.e);
         
@@ -367,6 +375,13 @@ class ImageEditor {
             return; // Ne pas laisser Fabric gérer autre chose si on pannait
         }
         
+        // Gérer le second clic pour finaliser l'annotation
+        if (this.isCreatingAnnotation && this.tempAnnotationBox) {
+            const pointer = this.canvas.getPointer(e.e);
+            this.finalizeAnnotation(pointer.x, pointer.y);
+            return;
+        }
+        
         if (!this.isDrawing) return;
         this.isDrawing = false; // Important de le mettre à false ici
         
@@ -376,18 +391,20 @@ class ImageEditor {
             case 'arrow':
             case 'line':
                 this.suppressSaveStateForTempObject = false; // Réactiver saveState
-        if (this.tempObject) {
+                if (this.tempObject) {
                     this.tempObject.setCoords(); // Finaliser les coordonnées
-                    // L'objet est déjà sur le canvas depuis le dernier onMouseMove
                     this.saveState(); // Sauvegarder l'état final
-                    this.renderLayersUI(); // Mettre à jour l'UI des calques
-                    this.canvas.setActiveObject(this.tempObject); // Rendre l'objet actif
-                    this.canvas.fire('object:modified', { target: this.tempObject }); // Pour màj UI propriétés
+                    this.setTool('select'); // Revenir à l'outil de sélection après avoir dessiné
+                    // Sélectionner l'objet nouvellement créé pour une modification facile
+                    setTimeout(() => {
+                        this.canvas.setActiveObject(this.tempObject);
+                        this.canvas.renderAll();
+                    }, 0);
                     this.tempObject = null; // Nettoyer
                 }
                 break;
             case 'pen':
-                this.stopFreeDrawing(); // Gère son propre saveState via path:created
+                // Rien à faire ici, géré par l'événement path:created de fabric
                 break;
             // case 'text': // Géré par object:added après addText
             //     break;
@@ -492,6 +509,184 @@ class ImageEditor {
     }
     
     /**
+     * Ajoute une annotation avec flèche
+     */
+    addAnnotation(x, y) {
+        if (typeof logInfo === 'function') {
+            logInfo('💬 Création d\'une annotation à:', x, y);
+        }
+        
+        this.isCreatingAnnotation = true;
+        this.tempAnnotationBox = null;
+        
+        // Créer d'abord la boîte d'annotation
+        const bgRect = new fabric.Rect({
+            left: x,
+            top: y,
+            width: 200,
+            height: 60,
+            fill: 'white',
+            stroke: this.currentColor,
+            strokeWidth: 2,
+            rx: 5,
+            ry: 5,
+            originX: 'center',
+            originY: 'center'
+        });
+        
+        const text = new fabric.IText('Annotation...', {
+            left: x,
+            top: y,
+            fontFamily: 'Arial',
+            fontSize: 14,
+            fill: 'black',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            editable: false
+        });
+        
+        // Créer un groupe temporaire pour la boîte
+        const annotationBox = new fabric.Group([bgRect, text], {
+            left: x,
+            top: y,
+            originX: 'center',
+            originY: 'center',
+            hasControls: false,
+            hasBorders: false,
+            selectable: false,
+            evented: false
+        });
+        
+        this.tempAnnotationBox = annotationBox;
+        this.canvas.add(annotationBox);
+        
+        // Afficher un message d'instruction
+        this.showToast('Cliquez pour placer la pointe de la flèche', 'info');
+        
+        // Changer le curseur
+        this.canvas.defaultCursor = 'crosshair';
+    }
+    
+    /**
+     * Finalise l'annotation avec la flèche
+     */
+    finalizeAnnotation(arrowX, arrowY) {
+        if (!this.tempAnnotationBox) return;
+        
+        const box = this.tempAnnotationBox;
+        const boxBounds = box.getBoundingRect();
+        
+        // Calculer le point de départ de la flèche (bord de la boîte le plus proche)
+        let startX, startY;
+        
+        // Déterminer de quel côté la flèche doit partir
+        const dx = arrowX - box.left;
+        const dy = arrowY - box.top;
+        const angle = Math.atan2(dy, dx);
+        
+        // Calculer le point sur le bord de la boîte
+        const halfWidth = boxBounds.width / 2;
+        const halfHeight = boxBounds.height / 2;
+        
+        if (Math.abs(Math.cos(angle)) * halfHeight > Math.abs(Math.sin(angle)) * halfWidth) {
+            // Sortie par les côtés gauche/droite
+            if (dx > 0) {
+                startX = box.left + halfWidth;
+                startY = box.top + (halfWidth * Math.tan(angle));
+            } else {
+                startX = box.left - halfWidth;
+                startY = box.top - (halfWidth * Math.tan(angle));
+            }
+        } else {
+            // Sortie par le haut/bas
+            if (dy > 0) {
+                startY = box.top + halfHeight;
+                startX = box.left + (halfHeight / Math.tan(angle));
+            } else {
+                startY = box.top - halfHeight;
+                startX = box.left - (halfHeight / Math.tan(angle));
+            }
+        }
+        
+        // Créer la flèche
+        const arrow = this.createArrow(startX, startY, arrowX, arrowY, {
+            stroke: this.currentColor,
+            strokeWidth: 2,
+            fill: this.currentColor
+        });
+        
+        // Dégrouper la boîte temporaire
+        const items = box._objects;
+        box._restoreObjectsState();
+        this.canvas.remove(box);
+        
+        // Créer le groupe final
+        const allItems = [...items, arrow];
+        const annotationGroup = new fabric.Group(allItems, {
+            left: (box.left + arrowX) / 2,
+            top: (box.top + arrowY) / 2,
+            originX: 'center',
+            originY: 'center',
+            isAnnotation: true
+        });
+        
+        this.canvas.add(annotationGroup);
+        this.canvas.setActiveObject(annotationGroup);
+        
+        // Permettre l'édition du texte en double-cliquant
+        annotationGroup.on('mousedown', (e) => {
+            if (e.e.detail === 2) { // Double-clic
+                const items = annotationGroup._objects;
+                const textObj = items.find(obj => obj.type === 'i-text');
+                
+                if (textObj) {
+                    this.canvas.discardActiveObject();
+                    annotationGroup._restoreObjectsState();
+                    this.canvas.remove(annotationGroup);
+                    
+                    items.forEach(obj => this.canvas.add(obj));
+                    this.canvas.setActiveObject(textObj);
+                    textObj.enterEditing();
+                    textObj.selectAll();
+                    
+                    // Regrouper après l'édition
+                    textObj.on('editing:exited', () => {
+                        this.canvas.discardActiveObject();
+                        items.forEach(obj => this.canvas.remove(obj));
+                        
+                        const newGroup = new fabric.Group(items, {
+                            left: annotationGroup.left,
+                            top: annotationGroup.top,
+                            angle: annotationGroup.angle,
+            originX: 'center',
+            originY: 'center',
+                            isAnnotation: true
+                        });
+                        
+                        this.canvas.add(newGroup);
+                        this.canvas.setActiveObject(newGroup);
+                        
+                        // Réappliquer l'événement
+                        newGroup.on('mousedown', annotationGroup.__eventListeners['mousedown'][0]);
+                    });
+                }
+            }
+        });
+        
+        // Nettoyer
+        this.isCreatingAnnotation = false;
+        this.tempAnnotationBox = null;
+        this.canvas.defaultCursor = 'default';
+        
+        // Revenir à l'outil de sélection
+        this.setTool('select');
+        
+        // Sauvegarder l'état
+        this.saveState();
+    }
+    
+    /**
      * Édite un objet texte (fonction centralisée)
      */
     editTextObject(textObj) {
@@ -562,6 +757,7 @@ class ImageEditor {
         this.canvas.isDrawingMode = true;
         this.canvas.freeDrawingBrush.width = this.currentStrokeWidth;
         this.canvas.freeDrawingBrush.color = this.currentColor;
+        this.canvas.renderAll(); // S'assurer que le curseur change immédiatement
     }
     
     /**
@@ -575,19 +771,45 @@ class ImageEditor {
      * Change l'outil actuel
      */
     setTool(tool) {
+        if (this.currentTool === tool) return; // Ne rien faire si l'outil est déjà actif
+
         this.currentTool = tool;
-        this.canvas.isDrawingMode = (tool === 'pen');
-        this.canvas.selection = (tool === 'select');
+        console.log(`Outil changé pour : ${tool}`);
+
+        // Gérer spécifiquement le mode dessin de Fabric pour l'outil stylo
+        if (tool === 'pen') {
+            this.startFreeDrawing();
+        } else {
+            this.stopFreeDrawing();
+        }
+
+        // Gérer l'état de sélection et l'interactivité des objets
+        if (tool === 'select') {
+            this.canvas.selection = true;
+            this.canvas.defaultCursor = this.tools.select.cursor;
+            this.canvas.getObjects().forEach(obj => {
+                // Rendre tous les objets sélectionnables, sauf l'image de fond
+                obj.set({ selectable: !obj.isOriginalImage, evented: true });
+            });
+        } else {
+            // Pour tous les autres outils (dessin, texte, etc.)
+            this.canvas.selection = false;
+            this.canvas.discardActiveObject(); // TRES IMPORTANT: désélectionner tout objet
+            this.canvas.defaultCursor = this.tools[tool]?.cursor || 'crosshair';
+            
+            // Rendre les objets non-interactifs pour ne pas les déplacer en dessinant
+            this.canvas.getObjects().forEach(obj => {
+                obj.set({ selectable: false, evented: false });
+            });
+        }
         
-        this.canvas.defaultCursor = this.tools[tool].cursor;
-        
-        document.querySelectorAll('.toolbar-btn').forEach(btn => {
-            btn.classList.remove('active');
+        // Mettre à jour l'UI des boutons de la barre d'outils
+        document.querySelectorAll('.toolbar-btn[data-tool]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tool === tool);
         });
-        document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
-        
-        // Mettre à jour l'UI des propriétés en fonction de l'outil et de la sélection
-        this.updatePropertiesFromActiveObject();
+
+        this.canvas.renderAll();
+        this.updatePropertiesFromActiveObject(); // Mettre à jour le panneau des propriétés
     }
     
     /**
@@ -619,6 +841,15 @@ class ImageEditor {
                 props.fill = color;
             } else { // Pour les formes, on modifie le trait
                 props.stroke = color;
+                
+                // Si c'est un groupe (comme une flèche), appliquer à tous les objets enfants
+                if (activeObject.type === 'group' && activeObject._objects) {
+                    activeObject._objects.forEach(obj => {
+                        if (obj.stroke !== undefined) {
+                            obj.set('stroke', color);
+                        }
+                    });
+                }
             }
             activeObject.set(props);
             this.canvas.requestRenderAll();
@@ -634,7 +865,12 @@ class ImageEditor {
             this.history = this.history.slice(0, this.historyStep + 1);
         }
         
-        this.history.push(JSON.stringify(this.canvas.toJSON()));
+        // Sauvegarder l'état avec les dimensions du canvas
+        const canvasState = this.canvas.toJSON();
+        canvasState.baseCanvasWidth = this.baseCanvasWidth;
+        canvasState.baseCanvasHeight = this.baseCanvasHeight;
+        
+        this.history.push(JSON.stringify(canvasState));
         this.historyStep = this.history.length - 1;
         
         // Limiter l'historique
@@ -670,7 +906,29 @@ class ImageEditor {
      * Charge un état de l'historique
      */
     loadState(state) {
+        // Sauvegarder les dimensions actuelles si elles sont dans l'état
+        const stateObj = JSON.parse(state);
+        
         this.canvas.loadFromJSON(state, () => {
+            // Restaurer les dimensions du canvas si elles ont changé
+            if (stateObj.baseCanvasWidth && stateObj.baseCanvasHeight) {
+                this.baseCanvasWidth = stateObj.baseCanvasWidth;
+                this.baseCanvasHeight = stateObj.baseCanvasHeight;
+                
+                // Réappliquer les dimensions
+                const oldScale = this.currentCanvasScale;
+                this.applyCanvasScaleAndObjects(oldScale);
+            }
+            
+            // Retrouver l'image originale
+            const objects = this.canvas.getObjects();
+            for (let obj of objects) {
+                if (obj.isOriginalImage) {
+                    this.originalImage = obj;
+                    break;
+                }
+            }
+            
             this.canvas.renderAll();
             this.updateHistoryButtons();
             this.renderLayersUI(); // Mettre à jour les calques après chargement d'un état
@@ -689,10 +947,17 @@ class ImageEditor {
      * Efface tout
      */
     clear() {
+        // Garder une référence à l'image originale
+        const originalImageRef = this.originalImage;
+        
         this.canvas.clear();
-        if (this.originalImage) {
-            this.canvas.setBackgroundImage(this.originalImage, this.canvas.renderAll.bind(this.canvas));
+        
+        // Remettre l'image originale
+        if (originalImageRef) {
+            this.canvas.add(originalImageRef);
+            this.canvas.sendToBack(originalImageRef);
         }
+        
         this.saveState();
         this.renderLayersUI(); // Mettre à jour après effacement
     }
@@ -768,6 +1033,24 @@ class ImageEditor {
                 deleteBtn.style.display = 'none';
             }
         }
+        
+        // Mettre à jour les boutons de gestion des calques
+        this.updateLayerButtonsVisibility();
+    }
+    
+    /**
+     * Met à jour l'état des boutons de gestion des calques
+     */
+    updateLayerButtonsVisibility() {
+        const activeObject = this.canvas.getActiveObject();
+        const isEnabled = activeObject && !activeObject.isOriginalImage;
+        
+        ['bringToFrontBtn', 'sendToBackBtn', 'bringForwardBtn', 'sendBackwardBtn'].forEach(btnId => {
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.disabled = !isEnabled;
+            }
+        });
     }
     
     /**
@@ -1676,8 +1959,12 @@ class ImageEditor {
         const strokeWidth = document.getElementById('strokeWidth');
         if (strokeWidth) {
             strokeWidth.addEventListener('input', (e) => {
-                const val = parseInt(e.target.value);
+                // S'assurer que l'épaisseur ne devient jamais 0
+                let val = parseInt(e.target.value);
+                if (isNaN(val) || val < 1) val = 1;
+                
                 this.currentStrokeWidth = val;
+                e.target.value = val; // Mettre à jour l'input si la valeur a été corrigée
                 document.getElementById('strokeWidthValue').textContent = `${val}px`;
                 const activeObject = this.canvas.getActiveObject();
 
@@ -1709,6 +1996,19 @@ class ImageEditor {
                         }
                     }
 
+                    // Si c'est un groupe (comme une flèche), appliquer à tous les objets enfants
+                    if (activeObject.type === 'group' && activeObject._objects) {
+                        activeObject._objects.forEach(obj => {
+                            if (obj.stroke) {
+                                obj.set({
+                                    strokeWidth: val,
+                                    stroke: obj.stroke === 'transparent' ? strokeToApply : obj.stroke,
+                                    strokeUniform: true
+                                });
+                            }
+                        });
+                    }
+                    
                     activeObject.set({
                         strokeWidth: val,
                         stroke: strokeToApply, // Appliquer la couleur de trait déterminée
@@ -1812,6 +2112,179 @@ class ImageEditor {
                     underlineBtn.classList.toggle('active', !isUnderline);
                     this.canvas.requestRenderAll();
                     this.saveState();
+                }
+            });
+        }
+        
+        // Event listeners pour les images fusionnées
+        const mergeX = document.getElementById('mergeX');
+        const mergeY = document.getElementById('mergeY');
+        const mergeWidth = document.getElementById('mergeWidth');
+        const mergeHeight = document.getElementById('mergeHeight');
+        const mergeRotation = document.getElementById('mergeRotation');
+        const lockRatioBtn = document.getElementById('lockRatio');
+        
+        let isRatioLocked = false;
+        let aspectRatio = 1;
+        
+        if (lockRatioBtn) {
+            lockRatioBtn.addEventListener('click', () => {
+                isRatioLocked = !isRatioLocked;
+                lockRatioBtn.classList.toggle('active', isRatioLocked);
+                
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage && isRatioLocked) {
+                    aspectRatio = (activeObject.width * activeObject.scaleX) / (activeObject.height * activeObject.scaleY);
+                }
+            });
+        }
+        
+        if (mergeX) {
+            mergeX.addEventListener('input', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                    activeObject.set('left', parseInt(e.target.value) || 0);
+                    this.canvas.requestRenderAll();
+                }
+            });
+            mergeX.addEventListener('change', () => this.saveState());
+        }
+        
+        if (mergeY) {
+            mergeY.addEventListener('input', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                    activeObject.set('top', parseInt(e.target.value) || 0);
+                    this.canvas.requestRenderAll();
+                }
+            });
+            mergeY.addEventListener('change', () => this.saveState());
+        }
+        
+        if (mergeWidth) {
+            mergeWidth.addEventListener('input', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                    const newWidth = parseInt(e.target.value) || 1;
+                    const newScaleX = newWidth / activeObject.width;
+                    activeObject.set('scaleX', newScaleX);
+                    
+                    if (isRatioLocked) {
+                        const newHeight = newWidth / aspectRatio;
+                        const newScaleY = newHeight / activeObject.height;
+                        activeObject.set('scaleY', newScaleY);
+                        mergeHeight.value = Math.round(newHeight);
+                    }
+                    
+                    this.canvas.requestRenderAll();
+                }
+            });
+            mergeWidth.addEventListener('change', () => this.saveState());
+        }
+        
+        if (mergeHeight) {
+            mergeHeight.addEventListener('input', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                    const newHeight = parseInt(e.target.value) || 1;
+                    const newScaleY = newHeight / activeObject.height;
+                    activeObject.set('scaleY', newScaleY);
+                    
+                    if (isRatioLocked) {
+                        const newWidth = newHeight * aspectRatio;
+                        const newScaleX = newWidth / activeObject.width;
+                        activeObject.set('scaleX', newScaleX);
+                        mergeWidth.value = Math.round(newWidth);
+                    }
+                    
+                    this.canvas.requestRenderAll();
+                }
+            });
+            mergeHeight.addEventListener('change', () => this.saveState());
+        }
+        
+        if (mergeRotation) {
+            mergeRotation.addEventListener('input', (e) => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                    const rotation = parseInt(e.target.value) || 0;
+                    activeObject.set('angle', rotation);
+                    document.getElementById('rotationValue').textContent = `${rotation}°`;
+                    this.canvas.requestRenderAll();
+                }
+            });
+            mergeRotation.addEventListener('change', () => this.saveState());
+        }
+        
+        // Event listeners pour les boutons d'actions spéciales
+        const importBtn = document.getElementById('importBtn');
+        if (importBtn) {
+            importBtn.addEventListener('click', () => {
+                this.openMergeImageSelector();
+            });
+        }
+        
+        // Bouton de redimensionnement du canvas
+        const resizeCanvasBtn = document.getElementById('resizeCanvasBtn');
+        if (resizeCanvasBtn) {
+            resizeCanvasBtn.addEventListener('click', () => {
+                this.toggleCanvasResizeMode();
+            });
+        }
+        
+        // Boutons de gestion des calques
+        const bringToFrontBtn = document.getElementById('bringToFrontBtn');
+        if (bringToFrontBtn) {
+            bringToFrontBtn.addEventListener('click', () => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && !activeObject.isOriginalImage) {
+                    this.canvas.bringToFront(activeObject);
+                    this.canvas.renderAll();
+                    this.saveState();
+                    this.renderLayersUI();
+                }
+            });
+        }
+        
+        const sendToBackBtn = document.getElementById('sendToBackBtn');
+        if (sendToBackBtn) {
+            sendToBackBtn.addEventListener('click', () => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && !activeObject.isOriginalImage) {
+                    this.canvas.sendToBack(activeObject);
+                    // S'assurer que l'image originale reste vraiment en arrière-plan
+                    if (this.originalImage) {
+                        this.canvas.sendToBack(this.originalImage);
+                    }
+                    this.canvas.renderAll();
+                    this.saveState();
+                    this.renderLayersUI();
+                }
+            });
+        }
+        
+        const bringForwardBtn = document.getElementById('bringForwardBtn');
+        if (bringForwardBtn) {
+            bringForwardBtn.addEventListener('click', () => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && !activeObject.isOriginalImage) {
+                    this.canvas.bringForward(activeObject);
+                    this.canvas.renderAll();
+                    this.saveState();
+                    this.renderLayersUI();
+                }
+            });
+        }
+        
+        const sendBackwardBtn = document.getElementById('sendBackwardBtn');
+        if (sendBackwardBtn) {
+            sendBackwardBtn.addEventListener('click', () => {
+                const activeObject = this.canvas.getActiveObject();
+                if (activeObject && !activeObject.isOriginalImage) {
+                    this.canvas.sendBackwards(activeObject);
+                    this.canvas.renderAll();
+                    this.saveState();
+                    this.renderLayersUI();
                 }
             });
         }
@@ -1972,7 +2445,10 @@ class ImageEditor {
         if (!layersListElement) return;
 
         layersListElement.innerHTML = ''; 
-        const objects = this.canvas.getObjects().slice().reverse(); 
+        // Filtrer les objets pour exclure les poignées de redimensionnement et les bordures
+        const objects = this.canvas.getObjects()
+            .filter(obj => !obj.isResizeHandle && obj !== this.canvasBorder)
+            .slice().reverse(); 
 
         const activeObject = this.canvas.getActiveObject();
         const activeObjects = this.canvas.getActiveObjects ? this.canvas.getActiveObjects() : (activeObject ? [activeObject] : []);
@@ -1986,6 +2462,7 @@ class ImageEditor {
             const listItem = document.createElement('div'); 
             listItem.className = 'layer-item';
             listItem.setAttribute('data-layer-id', obj.id);
+            listItem.setAttribute('draggable', 'true');
 
             if (activeObjects.some(activeObj => activeObj.id === obj.id)) {
                 listItem.classList.add('active');
@@ -2000,7 +2477,20 @@ class ImageEditor {
                 case 'text':
                     objectTypeDisplay = 'Texte';
                     iconClass = 'fas fa-font';
-                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${obj.text || 'Vide'}</span>`;
+                    const textContent = obj.text.substring(0, 20) + (obj.text.length > 20 ? '...' : '');
+                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${textContent}</span>`;
+                    break;
+                case 'image':
+                    // Distinguer les images fusionnées
+                    if (obj.isMergedImage) {
+                        objectTypeDisplay = 'Image fusionnée';
+                        iconClass = 'fas fa-image';
+                        const filename = obj.mergedImageFilename || 'Image';
+                        content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${filename}</span>`;
+                    } else {
+                        // Ne pas afficher l'image de fond dans les calques
+                        return;
+                    }
                     break;
                 case 'rect':
                     objectTypeDisplay = 'Rectangle';
@@ -2025,11 +2515,20 @@ class ImageEditor {
                 case 'group': 
                     objectTypeDisplay = 'Groupe';
                     iconClass = 'fas fa-object-group';
-                    if (obj._objects && obj._objects.length === 3 && obj._objects[0].type === 'line' && obj._objects[1].type === 'line' && obj._objects[2].type === 'line') {
+                    if (obj.isAnnotation) {
+                        objectTypeDisplay = 'Annotation';
+                        iconClass = 'fas fa-comment-dots';
+                        // Extraire le texte de l'annotation
+                        const textObj = obj._objects.find(o => o.type === 'i-text' || o.type === 'text');
+                        const annotationText = textObj ? textObj.text.substring(0, 20) + (textObj.text.length > 20 ? '...' : '') : 'Annotation';
+                        content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${annotationText}</span>`;
+                    } else if (obj._objects && obj._objects.length === 3 && obj._objects[0].type === 'line' && obj._objects[1].type === 'line' && obj._objects[2].type === 'line') {
                         objectTypeDisplay = 'Flèche';
                         iconClass = 'fas fa-long-arrow-alt-right';
+                        content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${objectTypeDisplay}</span>`;
+                    } else {
+                        content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${objectTypeDisplay}</span>`;
                     }
-                    content = `<span class="layer-text-content"><i class="${iconClass} layer-icon"></i> ${objectTypeDisplay}</span>`;
                     break;
                 default:
                     objectTypeDisplay = obj.type ? obj.type.charAt(0).toUpperCase() + obj.type.slice(1) : 'Objet';
@@ -2065,23 +2564,91 @@ class ImageEditor {
             listItem.onclick = () => {
                 this.canvas.discardActiveObject(); // D'abord désélectionner pour forcer la mise à jour si le même objet est recliqué
                 this.canvas.setActiveObject(obj);
-                this.canvas.requestRenderAll();
+                    this.canvas.requestRenderAll();
                 this.updatePropertiesFromActiveObject(); // Mettre à jour l'UI des propriétés
                 this.renderLayersUI(); // Pour mettre à jour la surbrillance
             };
 
             layersListElement.appendChild(listItem);
         });
+        
+        // Ajouter les événements de drag & drop
+        this.setupLayerDragAndDrop();
+    }
+    
+    /**
+     * Configure le drag & drop des calques
+     */
+    setupLayerDragAndDrop() {
+        const layerItems = document.querySelectorAll('.layer-item');
+        let draggedItem = null;
+        let draggedObject = null;
+        
+        layerItems.forEach(item => {
+            item.addEventListener('dragstart', (e) => {
+                draggedItem = item;
+                const layerId = item.getAttribute('data-layer-id');
+                draggedObject = this.canvas.getObjects().find(obj => obj.id === layerId);
+                item.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            
+            item.addEventListener('dragend', (e) => {
+                item.classList.remove('dragging');
+            });
+            
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                item.classList.add('drag-over');
+            });
+            
+            item.addEventListener('dragleave', (e) => {
+                item.classList.remove('drag-over');
+            });
+            
+            item.addEventListener('drop', (e) => {
+                e.preventDefault();
+                item.classList.remove('drag-over');
+                
+                if (!draggedItem || !draggedObject || draggedItem === item) return;
+                
+                const dropLayerId = item.getAttribute('data-layer-id');
+                const dropObject = this.canvas.getObjects().find(obj => obj.id === dropLayerId);
+                
+                if (!dropObject) return;
+                
+                // Obtenir les indices actuels
+                const objects = this.canvas.getObjects();
+                const draggedIndex = objects.indexOf(draggedObject);
+                const dropIndex = objects.indexOf(dropObject);
+                
+                if (draggedIndex === -1 || dropIndex === -1) return;
+                
+                // Réorganiser les objets
+                this.canvas.remove(draggedObject);
+                
+                // Si on déplace vers le bas, ajuster l'index
+                const newIndex = draggedIndex < dropIndex ? dropIndex : dropIndex;
+                
+                // Insérer à la nouvelle position
+                this.canvas.insertAt(draggedObject, newIndex);
+                
+                // Mettre à jour l'affichage
+                this.canvas.renderAll();
+                this.renderLayersUI();
+                this.saveState();
+            });
+        });
     }
 
     // Nouvelle fonction pour mettre à jour l'UI des propriétés depuis l'objet actif
     updatePropertiesFromActiveObject() {
-        const activeObject = this.canvas.getActiveObject();
+                const activeObject = this.canvas.getActiveObject();
         const textPropertiesPanel = document.querySelector('.text-properties');
         const strokeWidthGroup = document.getElementById('strokeWidth').closest('.property-group'); // Cible le groupe parent
 
         if (activeObject) {
-            this.currentStrokeWidth = activeObject.strokeWidth === undefined ? this.currentStrokeWidth : activeObject.strokeWidth;
+            this.currentStrokeWidth = activeObject.strokeWidth === undefined ? this.currentStrokeWidth : (activeObject.strokeWidth < 1 ? 1 : activeObject.strokeWidth);
             this.currentOpacity = activeObject.opacity === undefined ? this.currentOpacity : activeObject.opacity;
             this.currentColor = activeObject.stroke || activeObject.fill || this.currentColor;
 
@@ -2097,22 +2664,50 @@ class ImageEditor {
                 btn.classList.toggle('active', btn.dataset.color === this.currentColor);
             });
 
-            if (activeObject.type === 'i-text' || activeObject.type === 'text') {
-                textPropertiesPanel.style.display = 'block';
+            // Afficher/masquer les propriétés spécifiques selon le type d'objet
+            const textProperties = document.querySelector('.text-properties');
+            const mergeProperties = document.querySelector('.merge-properties');
+            
+            if (activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text')) {
+                // Propriétés de texte
+                textProperties.style.display = 'block';
+                mergeProperties.style.display = 'none';
+                
                 if (strokeWidthGroup) strokeWidthGroup.style.display = 'none'; // Masquer l'épaisseur pour le texte
-
+                
                 this.currentFontFamily = activeObject.fontFamily || this.currentFontFamily;
                 this.currentFontSize = activeObject.fontSize || this.currentFontSize;
-
+                
                 document.getElementById('fontFamily').value = this.currentFontFamily;
                 document.getElementById('fontSize').value = this.currentFontSize;
-
+                
                 document.getElementById('boldBtn').classList.toggle('active', activeObject.fontWeight === 'bold');
                 document.getElementById('italicBtn').classList.toggle('active', activeObject.fontStyle === 'italic');
                 document.getElementById('underlineBtn').classList.toggle('active', activeObject.underline === true);
-
-            } else { // Pour les formes et autres objets non-texte
-                textPropertiesPanel.style.display = 'none';
+                
+            } else if (activeObject && activeObject.type === 'image' && activeObject.isMergedImage) {
+                // Propriétés des images fusionnées
+                textProperties.style.display = 'none';
+                mergeProperties.style.display = 'block';
+                
+                // Position
+                document.getElementById('mergeX').value = Math.round(activeObject.left);
+                document.getElementById('mergeY').value = Math.round(activeObject.top);
+                
+                // Dimensions
+                document.getElementById('mergeWidth').value = Math.round(activeObject.width * activeObject.scaleX);
+                document.getElementById('mergeHeight').value = Math.round(activeObject.height * activeObject.scaleY);
+                
+                // Rotation
+                const rotation = activeObject.angle || 0;
+                document.getElementById('mergeRotation').value = rotation;
+                document.getElementById('rotationValue').textContent = `${Math.round(rotation)}°`;
+            } else {
+                // Masquer toutes les propriétés spécifiques
+                textProperties.style.display = 'none';
+                mergeProperties.style.display = 'none';
+                
+                // Pour les formes et autres objets non-texte
                 if (strokeWidthGroup) strokeWidthGroup.style.display = 'block'; // Afficher l'épaisseur pour les formes
             }
         } else {
@@ -2167,17 +2762,22 @@ class ImageEditor {
         if (this.originalImage) {
             this.originalImage.scaleX = this.currentCanvasScale; 
             this.originalImage.scaleY = this.currentCanvasScale;
-            // Position reste 0,0 car originX/Y sont left/top
-            this.canvas.setBackgroundImage(this.originalImage, this.canvas.renderAll.bind(this.canvas), {
-                scaleX: this.currentCanvasScale,
-                scaleY: this.currentCanvasScale,
-                originX: 'left',
-                originY: 'top'
-            });
-        } else {
-            // S'il n'y a pas d'image de fond, s'assurer que le canevas est rendu vierge
-             this.canvas.setBackgroundImage(null, this.canvas.renderAll.bind(this.canvas));
+            
+            // Ajuster la position selon l'échelle
+            this.originalImage.left = (this.originalImage.left || 0) * scaleFactor;
+            this.originalImage.top = (this.originalImage.top || 0) * scaleFactor;
+            
+            // S'assurer que l'image est dans le canvas (pas en arrière-plan)
+            if (!this.canvas.contains(this.originalImage)) {
+                this.canvas.add(this.originalImage);
+            }
+            
+            // S'assurer qu'elle reste en arrière-plan
+            this.canvas.sendToBack(this.originalImage);
         }
+        
+        // Définir un fond de canvas uniforme
+        this.canvas.backgroundColor = '#ffffff';
 
         // Mettre à l'échelle tous les autres objets
         const objects = this.canvas.getObjects();
@@ -2196,6 +2796,558 @@ class ImageEditor {
 
         this.canvas.renderAll();
         this.updateZoomDisplay();
+    }
+
+    /**
+     * Ouvre le sélecteur d'images pour la fusion
+     */
+    openMergeImageSelector() {
+        // Utiliser le système de modal unifié existant
+        if (typeof UnifiedModals !== 'undefined' && UnifiedModals.mergeImageSelector) {
+            UnifiedModals.mergeImageSelector.show(this);
+        } else {
+            // Fallback : créer une modal simple
+            this.createSimpleMergeModal();
+        }
+    }
+    
+    /**
+     * Crée une modal simple pour la sélection d'images
+     */
+    createSimpleMergeModal() {
+        // Récupérer toutes les images disponibles depuis l'état de l'application
+        const availableImages = [];
+        
+        // Collecter les images depuis toutes les sections
+        if (window.appState && window.appState.sections) {
+            window.appState.sections.forEach(section => {
+                if (section.images && section.images.length > 0) {
+                    section.images.forEach(img => {
+                        availableImages.push({
+                            ...img,
+                            sectionName: section.name || `Section ${section.sectionNumber}`
+                        });
+                    });
+                }
+            });
+        }
+        
+        // Ajouter les images non attribuées
+        if (window.appState && window.appState.unassignedImages) {
+            window.appState.unassignedImages.forEach(img => {
+                availableImages.push({
+                    ...img,
+                    sectionName: 'Non attribuées'
+                });
+            });
+        }
+        
+        if (availableImages.length === 0) {
+            this.showError('Aucune image disponible pour la fusion');
+            return;
+        }
+        
+        // Créer le contenu HTML
+        let modalContent = `
+            <div class="merge-selector-content">
+                <h5>Sélectionner des images à fusionner</h5>
+                <div class="merge-images-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 400px; overflow-y: auto; padding: 10px;">
+        `;
+        
+        availableImages.forEach((img, index) => {
+            modalContent += `
+                <div class="merge-image-item" style="cursor: pointer; border: 2px solid transparent; border-radius: 8px; overflow: hidden; transition: all 0.2s;" data-image-index="${index}">
+                    <img src="/image/${window.appState.documentName}/${img.filename}" style="width: 100%; height: 100px; object-fit: cover;" alt="${img.filename}">
+                    <div style="padding: 5px; font-size: 0.8em; text-align: center; color: white;">
+                        <div>${img.filename}</div>
+                        <div style="font-size: 0.7em; opacity: 0.7;">${img.sectionName}</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        modalContent += `
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button class="btn btn-secondary" onclick="imageEditor.closeMergeModal()">Annuler</button>
+                    <button class="btn btn-primary" onclick="imageEditor.addSelectedImagesToCanvas()">Ajouter les images</button>
+                </div>
+            </div>
+        `;
+        
+        // Stocker temporairement les images disponibles
+        this.tempAvailableImages = availableImages;
+        
+        // Créer et afficher la modal
+        this.showMergeModal(modalContent);
+    }
+    
+    /**
+     * Affiche la modal de fusion
+     */
+    showMergeModal(content) {
+        // Créer un overlay simple
+        const overlay = document.createElement('div');
+        overlay.id = 'mergeModalOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: var(--dark-blue, #0f172a);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow: auto;
+        `;
+        modal.innerHTML = content;
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        
+        // Gérer la sélection des images
+        this.setupMergeImageSelection();
+    }
+    
+    /**
+     * Configure la sélection des images dans la modal
+     */
+    setupMergeImageSelection() {
+        const imageItems = document.querySelectorAll('.merge-image-item');
+        
+        imageItems.forEach(item => {
+            item.addEventListener('click', function() {
+                this.classList.toggle('selected');
+                this.style.borderColor = this.classList.contains('selected') ? '#3b82f6' : 'transparent';
+                this.style.backgroundColor = this.classList.contains('selected') ? 'rgba(59, 130, 246, 0.2)' : 'transparent';
+            });
+        });
+    }
+    
+    /**
+     * Ferme la modal de fusion
+     */
+    closeMergeModal() {
+        const overlay = document.getElementById('mergeModalOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
+        // Nettoyer les images temporaires
+        this.tempAvailableImages = [];
+    }
+    
+    /**
+     * Ajoute les images sélectionnées au canvas
+     */
+    addSelectedImagesToCanvas() {
+        const selectedItems = document.querySelectorAll('.merge-image-item.selected');
+        
+        if (selectedItems.length === 0) {
+            this.showError('Veuillez sélectionner au moins une image');
+            return;
+        }
+        
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const offset = 20; // Décalage entre les images
+        
+        selectedItems.forEach((item, index) => {
+            const imageIndex = parseInt(item.dataset.imageIndex);
+            const imageData = this.tempAvailableImages[imageIndex];
+            
+            if (imageData) {
+                const imagePath = `/image/${window.appState.documentName}/${imageData.filename}`;
+                
+                // Ajouter l'image au canvas avec Fabric.js
+                fabric.Image.fromURL(imagePath, (img) => {
+                    // Redimensionner si l'image est trop grande
+                    const maxSize = 300;
+                    if (img.width > maxSize || img.height > maxSize) {
+                        const scale = maxSize / Math.max(img.width, img.height);
+                        img.scaleX = scale;
+                        img.scaleY = scale;
+                    }
+                    
+                    // Positionner avec un léger décalage pour chaque image
+                    img.set({
+                        left: centerX + (index * offset) - (img.width * img.scaleX / 2),
+                        top: centerY + (index * offset) - (img.height * img.scaleY / 2),
+                        originX: 'left',
+                        originY: 'top',
+                        // Propriétés pour identifier les images fusionnées
+                        isMergedImage: true,
+                        mergedImageFilename: imageData.filename
+                    });
+                    
+                    this.canvas.add(img);
+                    this.mergedImages.push(img);
+                    
+                    // Activer la sélection sur la dernière image ajoutée
+                    if (index === selectedItems.length - 1) {
+                        this.canvas.setActiveObject(img);
+                        this.canvas.renderAll();
+                    }
+                }, { crossOrigin: 'anonymous' });
+            }
+        });
+        
+        // Fermer la modal
+        this.closeMergeModal();
+        
+        // Revenir à l'outil de sélection
+        this.setTool('select');
+        
+        if (typeof logInfo === 'function') {
+            logInfo(`✅ ${selectedItems.length} image(s) ajoutée(s) pour fusion`);
+        }
+    }
+    
+    /**
+     * Active/désactive le mode de redimensionnement du canvas
+     */
+    toggleCanvasResizeMode() {
+        // Au lieu d'activer un mode complexe, ouvrir directement une boîte de dialogue
+        this.showSimpleResizeDialog();
+    }
+    
+    /**
+     * Affiche une boîte de dialogue simple pour redimensionner le canvas
+     */
+    showSimpleResizeDialog() {
+        console.log("Ouverture de la boîte de dialogue de redimensionnement V4 (8 poignées)");
+        
+        const initialWidth = this.baseCanvasWidth;
+        const initialHeight = this.baseCanvasHeight;
+        const initialAspectRatio = initialWidth / initialHeight;
+
+        // --- Préparation de la prévisualisation des images ---
+        let imagePreviewsHTML = '';
+        const previewAreaWidth = 350; // Largeur fixe de la zone de prévisualisation
+        const previewBoxInitialWidth = 200;
+        const scaleFactor = previewBoxInitialWidth / initialWidth;
+
+        this.canvas.getObjects().forEach(obj => {
+            if (obj.type === 'image') {
+                const objWidth = obj.width * obj.scaleX;
+                const objHeight = obj.height * obj.scaleY;
+                imagePreviewsHTML += `<div class="image-pos-preview" style="left: ${obj.left * scaleFactor}px; top: ${obj.top * scaleFactor}px; width: ${objWidth * scaleFactor}px; height: ${objHeight * scaleFactor}px; background-color: ${obj.isOriginalImage ? 'rgba(59,130,246,0.4)' : 'rgba(22,163,74,0.5)'}; border: 1px solid ${obj.isOriginalImage ? 'rgba(59,130,246,0.7)' : 'rgba(22,163,74,0.8)'};"></div>`;
+            }
+        });
+
+        const modalContent = `
+            <div class="resize-dialog">
+                <h3>Redimensionner le canvas</h3>
+                <div class="resize-preview-area">
+                    <div id="resizePreviewBox" style="width: ${previewBoxInitialWidth}px; height: ${previewBoxInitialWidth / initialAspectRatio}px;">
+                        ${imagePreviewsHTML}
+                        <div class="resize-handle" data-position="tl"></div> <div class="resize-handle" data-position="tm"></div> <div class="resize-handle" data-position="tr"></div>
+                        <div class="resize-handle" data-position="ml"></div>                                                    <div class="resize-handle" data-position="mr"></div>
+                        <div class="resize-handle" data-position="bl"></div> <div class="resize-handle" data-position="bm"></div> <div class="resize-handle" data-position="br"></div>
+                    </div>
+                </div>
+                <div class="resize-form">
+                    <div class="form-group"><label for="canvasWidth">Largeur (px):</label><input type="number" id="canvasWidth" value="${initialWidth}" min="100" max="3000"></div>
+                    <div class="form-group"><label for="canvasHeight">Hauteur (px):</label><input type="number" id="canvasHeight" value="${initialHeight}" min="100" max="3000"></div>
+                    <div class="form-group-checkbox"><input type="checkbox" id="keepAspectRatio" checked><label for="keepAspectRatio">Conserver le ratio</label></div>
+                </div>
+                <div class="form-actions"><button id="applyResizeBtn" class="btn btn-primary">Appliquer</button><button id="cancelResizeBtn" class="btn btn-secondary">Annuler</button></div>
+            </div>
+        `;
+
+        const resizeContainer = document.createElement('div');
+        resizeContainer.id = 'resizeDialogContainer';
+        document.body.appendChild(resizeContainer);
+
+        const style = document.createElement('style');
+        style.id = 'resize-modal-style';
+        style.textContent = `
+            #resizeDialogContainer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 99999; }
+            .resize-dialog { background-color: #0f172a; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 25px; width: 400px; color: white; box-shadow: 0 5px 25px rgba(0,0,0,0.4); }
+            .resize-preview-area { position: relative; height: 250px; margin-bottom: 20px; padding: 10px; background-color: rgba(15, 23, 42, 0.5); border-radius: 6px; user-select: none; }
+            #resizePreviewBox { position: absolute; background-color: rgba(255,255,255,0.05); border: 1px dashed rgba(59, 130, 246, 0.5); }
+            .image-pos-preview { position: absolute; box-sizing: border-box; }
+            .resize-handle { position: absolute; width: 12px; height: 12px; background-color: #3b82f6; border: 2px solid white; border-radius: 50%; z-index: 10; }
+            .resize-handle[data-position=tl] { top: -6px; left: -6px; cursor: nwse-resize; } .resize-handle[data-position=tm] { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .resize-handle[data-position=tr] { top: -6px; right: -6px; cursor: nesw-resize; }
+            .resize-handle[data-position=ml] { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; } .resize-handle[data-position=mr] { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
+            .resize-handle[data-position=bl] { bottom: -6px; left: -6px; cursor: nesw-resize; } .resize-handle[data-position=bm] { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .resize-handle[data-position=br] { bottom: -6px; right: -6px; cursor: nwse-resize; }
+            .resize-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; align-items: center; }
+            .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        `;
+        document.head.appendChild(style);
+        resizeContainer.innerHTML = modalContent;
+
+        const cleanup = () => {
+            if (document.body.contains(resizeContainer)) {
+                document.body.removeChild(resizeContainer);
+            }
+            if (document.head.contains(style)) {
+                document.head.removeChild(style);
+            }
+        };
+        const widthInput = document.getElementById('canvasWidth');
+        const heightInput = document.getElementById('canvasHeight');
+        const previewBox = document.getElementById('resizePreviewBox');
+        const handles = resizeContainer.querySelectorAll('.resize-handle');
+        const keepRatioCheckbox = document.getElementById('keepAspectRatio');
+        let isDragging = false;
+        
+        // Centrer la preview box
+        const previewArea = resizeContainer.querySelector('.resize-preview-area');
+        previewBox.style.left = `${(previewArea.offsetWidth - previewBox.offsetWidth) / 2}px`;
+        previewBox.style.top = `${(previewArea.offsetHeight - previewBox.offsetHeight) / 2}px`;
+
+        handles.forEach(handle => {
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isDragging = true;
+                
+                const handlePos = handle.dataset.position;
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startLeft = previewBox.offsetLeft;
+                const startTop = previewBox.offsetTop;
+                const startWidth = previewBox.offsetWidth;
+                const startHeight = previewBox.offsetHeight;
+
+                const doDrag = (moveEvent) => {
+                    let dx = moveEvent.clientX - startX;
+                    let dy = moveEvent.clientY - startY;
+                    let newWidth = startWidth, newHeight = startHeight, newLeft = startLeft, newTop = startTop;
+
+                    if (handlePos.includes('r')) newWidth = startWidth + dx;
+                    if (handlePos.includes('l')) { newWidth = startWidth - dx; newLeft = startLeft + dx; }
+                    if (handlePos.includes('b')) newHeight = startHeight + dy;
+                    if (handlePos.includes('t')) { newHeight = startHeight - dy; newTop = startTop + dy; }
+
+                    if (keepRatioCheckbox.checked) {
+                        if (handlePos.length === 2) { // Coin
+                            if (Math.abs(dx) > Math.abs(dy)) {
+                                newHeight = newWidth / initialAspectRatio;
+                            } else {
+                                newWidth = newHeight * initialAspectRatio;
+                            }
+                        } else { // Côté
+                            if (handlePos === 't' || handlePos === 'b') newWidth = newHeight * initialAspectRatio;
+                            else newHeight = newWidth / initialAspectRatio;
+                        }
+                        if (handlePos.includes('l')) newLeft = (startLeft + startWidth) - newWidth;
+                        if (handlePos.includes('t')) newTop = (startTop + startHeight) - newHeight;
+                    }
+                    
+                    previewBox.style.width = `${newWidth}px`; previewBox.style.height = `${newHeight}px`;
+                    previewBox.style.left = `${newLeft}px`; previewBox.style.top = `${newTop}px`;
+                    
+                    const finalScale = newWidth / initialWidth;
+                    widthInput.value = Math.round(newWidth / scaleFactor);
+                    heightInput.value = Math.round(newHeight / scaleFactor);
+                };
+
+                const stopDrag = () => {
+                    document.removeEventListener('mousemove', doDrag);
+                    document.removeEventListener('mouseup', stopDrag);
+                    setTimeout(() => { isDragging = false; }, 0);
+                };
+                document.addEventListener('mousemove', doDrag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+        });
+
+        document.getElementById('applyResizeBtn').addEventListener('click', () => {
+            const newWidth = parseInt(widthInput.value);
+            const newHeight = parseInt(heightInput.value);
+            if (newWidth >= 100 && newWidth <= 3000 && newHeight >= 100 && newHeight <= 3000) {
+        this.saveState();
+                this.baseCanvasWidth = newWidth;
+                this.baseCanvasHeight = newHeight;
+                this.applyCanvasScaleAndObjects(this.currentCanvasScale);
+                cleanup();
+                this.showToast('Canvas redimensionné avec succès', 'success');
+            }
+        });
+        
+        document.getElementById('cancelResizeBtn').addEventListener('click', cleanup);
+        resizeContainer.addEventListener('click', (e) => {
+            if (!isDragging && e.target === resizeContainer) {
+                cleanup();
+            }
+        });
+    }
+    
+    /**
+     * Affiche le dialogue d'expansion
+     */
+    showExpandDialog(content) {
+        const overlay = document.createElement('div');
+        overlay.id = 'expandDialogOverlay';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: var(--dark-blue, #0f172a);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 500px;
+            width: 90%;
+        `;
+        dialog.innerHTML = content;
+        
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        // Gérer la sélection de position
+        this.setupPositionSelection();
+        this.selectedPosition = 'center';
+    }
+    
+    /**
+     * Configure la sélection de position
+     */
+    setupPositionSelection() {
+        const positionBtns = document.querySelectorAll('.position-btn');
+        
+        positionBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Retirer la classe active de tous les boutons
+                positionBtns.forEach(b => {
+                    b.classList.remove('active');
+                    b.style.background = 'rgba(59, 130, 246, 0.2)';
+                    b.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+                });
+                
+                // Ajouter la classe active au bouton cliqué
+                btn.classList.add('active');
+                btn.style.background = 'rgba(59, 130, 246, 0.4)';
+                btn.style.borderColor = 'rgba(59, 130, 246, 0.6)';
+                
+                this.selectedPosition = btn.dataset.position;
+            });
+        });
+    }
+    
+    /**
+     * Ferme le dialogue d'expansion
+     */
+    closeExpandDialog() {
+        const overlay = document.getElementById('expandDialogOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+    
+    /**
+     * Applique l'expansion du canvas
+     */
+    applyCanvasExpansion() {
+        const newWidth = parseInt(document.getElementById('newCanvasWidth').value);
+        const newHeight = parseInt(document.getElementById('newCanvasHeight').value);
+        
+        if (newWidth < this.baseCanvasWidth || newHeight < this.baseCanvasHeight) {
+            this.showError('La nouvelle taille doit être supérieure à la taille actuelle');
+            return;
+        }
+        
+        // Calculer la nouvelle position de l'image de fond et des objets
+        let offsetX = 0;
+        let offsetY = 0;
+        
+        switch (this.selectedPosition) {
+            case 'top-left':
+                offsetX = 0;
+                offsetY = 0;
+                break;
+            case 'top-center':
+                offsetX = (newWidth - this.baseCanvasWidth) / 2;
+                offsetY = 0;
+                break;
+            case 'top-right':
+                offsetX = newWidth - this.baseCanvasWidth;
+                offsetY = 0;
+                break;
+            case 'center-left':
+                offsetX = 0;
+                offsetY = (newHeight - this.baseCanvasHeight) / 2;
+                break;
+            case 'center':
+                offsetX = (newWidth - this.baseCanvasWidth) / 2;
+                offsetY = (newHeight - this.baseCanvasHeight) / 2;
+                break;
+            case 'center-right':
+                offsetX = newWidth - this.baseCanvasWidth;
+                offsetY = (newHeight - this.baseCanvasHeight) / 2;
+                break;
+            case 'bottom-left':
+                offsetX = 0;
+                offsetY = newHeight - this.baseCanvasHeight;
+                break;
+            case 'bottom-center':
+                offsetX = (newWidth - this.baseCanvasWidth) / 2;
+                offsetY = newHeight - this.baseCanvasHeight;
+                break;
+            case 'bottom-right':
+                offsetX = newWidth - this.baseCanvasWidth;
+                offsetY = newHeight - this.baseCanvasHeight;
+                break;
+        }
+        
+        // Mettre à jour les dimensions de base
+        this.baseCanvasWidth = newWidth;
+        this.baseCanvasHeight = newHeight;
+        
+        // Déplacer tous les objets existants
+        const objects = this.canvas.getObjects();
+        objects.forEach(obj => {
+            if (obj !== this.originalImage) {
+                obj.left += offsetX;
+                obj.top += offsetY;
+                obj.setCoords();
+            }
+        });
+        
+        // Déplacer l'image de fond si nécessaire
+        if (this.originalImage) {
+            this.originalImage.left = offsetX;
+            this.originalImage.top = offsetY;
+        }
+        
+        // Appliquer les nouvelles dimensions
+        const oldScale = this.currentCanvasScale;
+        this.applyCanvasScaleAndObjects(oldScale);
+        
+        // Fermer le dialogue
+        this.closeExpandDialog();
+        
+        // Sauvegarder l'état
+        this.saveState();
+        
+        if (typeof logInfo === 'function') {
+            logInfo(`✅ Canvas agrandi à ${newWidth}x${newHeight} pixels`);
+        }
     }
 }
 
