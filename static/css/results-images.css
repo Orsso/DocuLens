@@ -24,9 +24,12 @@
     background: rgba(15, 23, 42, 0.5);
     border: 1px solid rgba(59, 130, 246, 0.2);
     height: 220px;
-    display: flex;
-    flex-direction: column;
-    /* Force la cohérence entre navigateurs */
+    /* Utilisation de CSS Grid pour un contrôle strict des hauteurs */
+    display: grid;
+    grid-template-rows: 150px 1fr;
+    grid-template-areas: 
+        "preview"
+        "info";
     box-sizing: border-box;
 }
 
@@ -232,12 +235,12 @@
 
 .image-preview-container {
     position: relative;
-    height: 150px;
+    grid-area: preview;
     overflow: hidden;
-    flex: 0 0 150px;
-    /* Assure la cohérence entre navigateurs */
     box-sizing: border-box;
-    display: flex;
+    display: block;
+    height: 150px; /* Hauteur stricte */
+    max-height: 150px; /* Empêche tout débordement */
 }
 
 .image-preview {
@@ -252,9 +255,7 @@
 
 .image-info {
     position: relative;
-    /* Calcul explicite pour éviter les différences entre navigateurs */
-    height: calc(220px - 150px - 2px); /* Hauteur totale - image - bordures */
-    flex: 0 0 auto;
+    grid-area: info;
     background: rgba(15, 23, 42, 0.8);
     border-top: 1px solid rgba(59, 130, 246, 0.2);
     color: white;
@@ -265,8 +266,9 @@
     flex-direction: column;
     justify-content: flex-start;
     box-sizing: border-box;
-    /* Fallback pour navigateurs plus anciens */
-    min-height: 68px;
+    overflow: hidden;
+    /* La grille se charge automatiquement de la hauteur restante */
+    min-height: 0;
 }
 
 .image-filename {

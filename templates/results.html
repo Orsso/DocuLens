@@ -40,8 +40,19 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
 
+        /* Correction pour compatibilité cross-browser - renforcement CSS Grid */
+        .image-card {
+            height: 220px !important; /* Force la hauteur totale */
+        }
+        
+        .image-preview-container {
+            height: 150px !important; /* Force la hauteur de l'image */
+            max-height: 150px !important;
+        }
+        
         .image-info {
-            height: 60px; /* Un peu plus de hauteur pour le footer */
+            /* Occupe automatiquement l'espace restant (70px) */
+            overflow: hidden !important;
         }
     </style>
 </head>
