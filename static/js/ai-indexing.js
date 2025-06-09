@@ -211,10 +211,8 @@ class AIIndexingManager {
     updateAppStateWithAIMetadata(suggestions) {
         let updatedCount = 0;
         
-        // Appliquer la vérification des doublons côté client
-        const uniqueSuggestions = this.ensureUniqueAINames(suggestions);
-        
-        uniqueSuggestions.forEach(suggestion => {
+        // Utiliser les suggestions directement sans renommage automatique
+        suggestions.forEach(suggestion => {
             const { filename, suggested_name } = suggestion;
 
             console.log(`🔍 [AI-Indexing] Traitement métadonnées pour: ${filename} -> "${suggested_name}"`);
@@ -285,104 +283,13 @@ class AIIndexingManager {
                 // Debug supplémentaire: structure complète
                 console.log('🏗️ [DEBUG] Structure appState complète:');
                 console.log(JSON.stringify(window.appState, null, 2));
-                }
+            }
         });
         
-        console.log(`📊 [AI-Indexing] Bilan mise à jour appState: ${updatedCount}/${uniqueSuggestions.length} images mises à jour`);
+        console.log(`📊 [AI-Indexing] Bilan mise à jour appState: ${updatedCount}/${suggestions.length} images mises à jour`);
         return updatedCount;
     }
 
-    /**
-     * 🔍 Assure l'unicité des noms IA côté client
-     * Vérifie les doublons dans toutes les images déjà indexées
-     */
-    ensureUniqueAINames(suggestions) {
-        console.log('🔍 [AI-Indexing] Vérification unicité des noms IA côté client');
-        
-        // Récupérer tous les noms IA existants dans appState
-        const existingAINames = this.getExistingAINames();
-        console.log('📋 Noms IA existants:', existingAINames);
-        
-        const titleCounts = {};
-        
-        // Initialiser les compteurs avec les noms existants
-        existingAINames.forEach(existingName => {
-            const baseName = existingName;
-            let numberSuffix = 1;
-            
-            // Si le nom se termine par " X" où X est un nombre
-            const match = existingName.match(/^(.+)\s(\d+)$/);
-            if (match) {
-                const extractedBaseName = match[1];
-                const extractedNumber = parseInt(match[2]);
-                
-                if (!titleCounts[extractedBaseName] || titleCounts[extractedBaseName] < extractedNumber) {
-                    titleCounts[extractedBaseName] = extractedNumber;
-                }
-            } else {
-                // Nom sans numéro
-                if (!titleCounts[baseName]) {
-                    titleCounts[baseName] = 1;
-                }
-            }
-        });
-        
-        // Traiter les nouvelles suggestions
-        const uniqueSuggestions = suggestions.map(suggestion => {
-            const originalName = suggestion.suggested_name.trim();
-            
-            if (titleCounts[originalName]) {
-                titleCounts[originalName]++;
-                const uniqueName = `${originalName} ${titleCounts[originalName]}`;
-                console.log(`📝 Nom IA rendu unique: "${originalName}" -> "${uniqueName}"`);
-                
-                return {
-                    ...suggestion,
-                    suggested_name: uniqueName
-                };
-            } else {
-                titleCounts[originalName] = 1;
-                return suggestion;
-            }
-        });
-        
-        console.log(`✅ ${uniqueSuggestions.length} noms IA vérifiés pour unicité`);
-        return uniqueSuggestions;
-    }
-
-    /**
-     * 🔍 Récupère tous les noms IA existants dans appState
-     */
-    getExistingAINames() {
-        const existingNames = [];
-        
-        try {
-            if (window.appState && window.appState.sections) {
-                window.appState.sections.forEach(section => {
-                    if (section.images) {
-                        section.images.forEach(image => {
-                            if (image.isAIRenamed && image.aiSuggestedName) {
-                                existingNames.push(image.aiSuggestedName);
-                            }
-                        });
-                    }
-                });
-            }
-            
-            if (window.appState && window.appState.unassignedImages) {
-                window.appState.unassignedImages.forEach(image => {
-                    if (image.isAIRenamed && image.aiSuggestedName) {
-                        existingNames.push(image.aiSuggestedName);
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('❌ Erreur lors de la récupération des noms IA existants:', error);
-        }
-        
-        return existingNames;
-    }
-    
     /**
      * 🔄 MÉTHODE DE COMPATIBILITÉ : Applique les renommages (legacy support)
      * Maintenant redirige vers la nouvelle méthode de métadonnées
@@ -397,8 +304,8 @@ class AIIndexingManager {
         }));
         
         return this.applyAISuggestions(suggestions);
-                }
-                
+    }
+    
     /**
      * 🔄 MÉTHODE DE COMPATIBILITÉ : updateInterfaceAfterRename (legacy support)
      * Maintenant utilise renderSections() global

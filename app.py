@@ -13,7 +13,7 @@ import numpy as np
 import hashlib
 import uuid
 from collections import defaultdict
-from ai_indexing import get_indexer, test_api_connection, ensure_unique_titles, ensure_unique_titles_global
+from ai_indexing import get_indexer, test_api_connection
 
 # Charger les variables d'environnement depuis le fichier .env
 try:
@@ -349,7 +349,7 @@ def calculate_image_hash(image_data):
         print(f"Erreur calcul hash: {e}")
         return None
 
-def are_images_similar(hash1, hash2, threshold=8):
+def are_images_similar(hash1, hash2, threshold=25):
     """Compare deux hashs et retourne True si les images sont vraiment identiques"""
     if not hash1 or not hash2 or len(hash1) != len(hash2):
         return False
@@ -357,11 +357,11 @@ def are_images_similar(hash1, hash2, threshold=8):
     # Compter les différences bit par bit
     differences = sum(c1 != c2 for c1, c2 in zip(hash1, hash2))
     
-    # Avec hash 16x16 (256 bits), seuil plus strict :
-    # 8 bits sur 256 = ~3% de différence maximum (très conservateur)
+    # Avec hash 16x16 (256 bits), seuil optimisé :
+    # 25 bits sur 256 = ~10% de différence maximum (plus réaliste pour éviter les faux positifs)
     return differences <= threshold
 
-def filter_duplicate_images(image_data_list, min_occurrences=4):
+def filter_duplicate_images(image_data_list, min_occurrences=6):
     """
     Filtre les images qui apparaissent plus de min_occurrences fois
     (logos, headers, footers, etc.) en conservant le meilleur exemplaire
@@ -1004,24 +1004,23 @@ def ai_indexing_analyze():
                     'error': 'Échec de l\'analyse par IA'
                 })
         
-        # Appliquer la gestion des doublons uniquement sur les résultats réussis
+        # Traiter les résultats réussis directement sans renommage automatique
         successful_results = [r for r in raw_results if r.get('success', False)]
-        unique_results = ensure_unique_titles_global(successful_results, document_name)
         
-        # Reconstituer la liste finale avec les titres uniques et générer les noms de fichiers
+        # Reconstituer la liste finale sans modification des titres
         final_results = []
         success_index = 0
         
         for raw_result in raw_results:
             if raw_result.get('success', False):
-                unique_result = unique_results[success_index]
+                result = successful_results[success_index]
                 final_results.append({
-                    'filename': unique_result['filename'],
+                    'filename': result['filename'],
                     'success': True,
-                    'title': unique_result['title'],
-                    'suggested_name': unique_result['title'],  # Harmonisation avec le client
-                    'tags': unique_result['tags'],
-                    'suggested_filename': generate_new_filename(unique_result['filename'], unique_result['title'])
+                    'title': result['title'],
+                    'suggested_name': result['title'],  # Titre original sans modification
+                    'tags': result['tags'],
+                    'suggested_filename': generate_new_filename(result['filename'], result['title'])
                 })
                 success_index += 1
             else:
